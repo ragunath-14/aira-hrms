@@ -1,6 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { BriefcaseIcon, PlusIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Designation = {
   id: string;
@@ -8,10 +39,13 @@ type Designation = {
   description: string | null;
 };
 
+const PAGE_SIZE = 10;
+
 export default function DesignationsPage() {
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -27,17 +61,13 @@ export default function DesignationsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Failed to fetch designations",
-        );
+        throw new Error(data.error || "Failed to fetch designations");
       }
 
       setDesignations(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch designations",
+        err instanceof Error ? err.message : "Failed to fetch designations",
       );
     } finally {
       setLoading(false);
@@ -76,9 +106,7 @@ export default function DesignationsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Failed to create designation",
-        );
+        throw new Error(data.error || "Failed to create designation");
       }
 
       setDesignations((current) => [...current, data]);
@@ -86,176 +114,155 @@ export default function DesignationsPage() {
       setName("");
       setDescription("");
       setShowForm(false);
+      toast.success("Designation created");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create designation",
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to create designation";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   }
 
+  const pagedDesignations = useMemo(
+    () => paginate(designations, page, PAGE_SIZE),
+    [designations, page],
+  );
+
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Designations
-            </h1>
-
-            <p className="mt-2 text-gray-500">
-              Manage employee designations across your organization.
-            </p>
-          </div>
-
-          <button
-            type="button"
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Designations"
+        description="Manage employee designations across your organization."
+        action={
+          <Button
             onClick={() => {
-              setShowForm((current) => !current);
+              setShowForm(true);
               setError("");
             }}
-            className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800"
           >
-            {showForm ? "Cancel" : "Add Designation"}
-          </button>
+            <PlusIcon />
+            Add Designation
+          </Button>
+        }
+      />
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <Card className="overflow-hidden p-0">
+        <div className="border-b px-6 py-5">
+          <h2 className="text-lg font-semibold text-foreground">
+            Designation List
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {designations.length} designation
+            {designations.length === 1 ? "" : "s"} found
+          </p>
         </div>
 
-        {showForm && (
-          <section className="mb-6 rounded-xl border bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Add Designation
-            </h2>
-
-            <form
-              onSubmit={handleCreateDesignation}
-              className="mt-5 space-y-4"
-            >
-              <div>
-                <label
-                  htmlFor="designation-name"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
-                  Designation Name
-                </label>
-
-                <input
-                  id="designation-name"
-                  type="text"
-                  value={name}
-                  onChange={(event) =>
-                    setName(event.target.value)
-                  }
-                  placeholder="e.g. HR Manager"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="designation-description"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
-                  Description
-                </label>
-
-                <textarea
-                  id="designation-description"
-                  value={description}
-                  onChange={(event) =>
-                    setDescription(event.target.value)
-                  }
-                  placeholder="Designation description"
-                  rows={4}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving
-                    ? "Creating..."
-                    : "Create Designation"}
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
+        {loading ? (
+          <div className="space-y-2 p-6">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-12 w-full" />
+            ))}
           </div>
+        ) : designations.length === 0 ? (
+          <EmptyState
+            icon={BriefcaseIcon}
+            title="No designations found"
+            description="Create your first designation to get started."
+          />
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Designation</TableHead>
+                  <TableHead>Description</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedDesignations.map((designation) => (
+                  <TableRow key={designation.id}>
+                    <TableCell className="font-medium text-foreground">
+                      {designation.name}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {designation.description || "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <DataTablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={designations.length}
+              onPageChange={setPage}
+            />
+          </>
         )}
+      </Card>
 
-        <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-          <div className="border-b px-6 py-5">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Designation List
-            </h2>
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Designation</DialogTitle>
+            <DialogDescription>
+              Create a new designation for your organization.
+            </DialogDescription>
+          </DialogHeader>
 
-            <p className="mt-1 text-sm text-gray-500">
-              {designations.length} designation
-              {designations.length === 1 ? "" : "s"} found
-            </p>
-          </div>
-
-          {loading ? (
-            <div className="p-8 text-center text-sm text-gray-500">
-              Loading designations...
+          <form onSubmit={handleCreateDesignation} className="space-y-4">
+            <div>
+              <Label htmlFor="designation-name" className="mb-1.5">
+                Designation Name
+              </Label>
+              <Input
+                id="designation-name"
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="e.g. HR Manager"
+              />
             </div>
-          ) : designations.length === 0 ? (
-            <div className="p-8 text-center">
-              <h3 className="text-lg font-semibold text-gray-900">
-                No designations found
-              </h3>
 
-              <p className="mt-2 text-sm text-gray-500">
-                Create your first designation to get started.
-              </p>
+            <div>
+              <Label htmlFor="designation-description" className="mb-1.5">
+                Description
+              </Label>
+              <Textarea
+                id="designation-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Designation description"
+                rows={4}
+              />
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                    <th className="px-6 py-4 font-medium">
-                      Designation
-                    </th>
 
-                    <th className="px-6 py-4 font-medium">
-                      Description
-                    </th>
-                  </tr>
-                </thead>
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
-                <tbody>
-                  {designations.map((designation) => (
-                    <tr
-                      key={designation.id}
-                      className="border-b last:border-0 hover:bg-gray-50"
-                    >
-                      <td className="px-6 py-4 font-medium text-gray-900">
-                        {designation.name}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {designation.description || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowForm(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Creating…" : "Create Designation"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

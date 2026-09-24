@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { NetworkIcon, UsersIcon, User2Icon, Building2Icon } from "lucide-react";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { StatCard } from "@/components/hr/stat-card";
+import { StatusBadge } from "@/components/hr/status-badge";
+import { EmptyState } from "@/components/hr/empty-state";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Employee = {
   id: string;
@@ -91,30 +99,28 @@ export default function ReportingStructurePage() {
 
     return (
       <div className={level > 0 ? "ml-8 mt-4" : ""}>
-        <div className="rounded-lg border bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
+        <Card>
+          <CardContent className="flex items-center justify-between gap-4 px-4 py-4">
             <div>
-              <p className="font-semibold text-gray-900">
+              <p className="font-semibold text-foreground">
                 {getEmployeeName(employee)}
               </p>
 
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {employee.employeeCode}
               </p>
 
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {employee.email}
               </p>
             </div>
 
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-              {employee.status}
-            </span>
-          </div>
-        </div>
+            <StatusBadge status={employee.status} />
+          </CardContent>
+        </Card>
 
         {reports.length > 0 && (
-          <div className="border-l-2 border-gray-200 pl-4">
+          <div className="border-l-2 border-border pl-4">
             {reports.map((report) => (
               <EmployeeNode
                 key={report.id}
@@ -129,101 +135,73 @@ export default function ReportingStructurePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Reporting Structure
-          </h1>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Reporting Structure"
+        description="View employee reporting relationships and management hierarchy."
+      />
 
-          <p className="mt-2 text-gray-500">
-            View employee reporting relationships and management hierarchy.
-          </p>
+      {error && (
+        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-16 w-full" />
+          ))}
+        </div>
+      ) : employees.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={NetworkIcon}
+            title="No employees found"
+            description="Employees and their reporting relationships will appear here."
+          />
+        </Card>
+      ) : (
+        <>
+          <div className="mb-6 grid gap-6 md:grid-cols-3">
+            <StatCard
+              label="Total Employees"
+              value={employees.length}
+              icon={UsersIcon}
+            />
+
+            <StatCard
+              label="Managers"
+              value={managers.length}
+              icon={User2Icon}
+            />
+
+            <StatCard
+              label="Top Level"
+              value={topLevelEmployees.length}
+              icon={Building2Icon}
+            />
           </div>
-        )}
 
-        {loading ? (
-          <div className="rounded-xl border bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-gray-500">
-              Loading reporting structure...
-            </p>
-          </div>
-        ) : employees.length === 0 ? (
-          <div className="rounded-xl border bg-white p-8 text-center shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">
-              No employees found
-            </h2>
-
-            <p className="mt-2 text-sm text-gray-500">
-              Employees and their reporting relationships will appear here.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-6 grid gap-6 md:grid-cols-3">
-              <SummaryCard
-                title="Total Employees"
-                value={employees.length}
-              />
-
-              <SummaryCard
-                title="Managers"
-                value={managers.length}
-              />
-
-              <SummaryCard
-                title="Top Level"
-                value={topLevelEmployees.length}
-              />
-            </div>
-
-            <section className="rounded-xl border bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Organization Hierarchy
-              </h2>
-
-              <p className="mt-1 text-sm text-gray-500">
+          <Card>
+            <CardHeader>
+              <CardTitle>Organization Hierarchy</CardTitle>
+              <CardDescription>
                 Employees are grouped according to their manager relationship.
-              </p>
+              </CardDescription>
+            </CardHeader>
 
-              <div className="mt-6 space-y-4">
-                {topLevelEmployees.map((employee) => (
-                  <EmployeeNode
-                    key={employee.id}
-                    employee={employee}
-                  />
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-      </div>
-    </main>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-6 shadow-sm">
-      <p className="text-sm text-gray-500">
-        {title}
-      </p>
-
-      <p className="mt-2 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+            <CardContent className="space-y-4">
+              {topLevelEmployees.map((employee) => (
+                <EmployeeNode
+                  key={employee.id}
+                  employee={employee}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
-  

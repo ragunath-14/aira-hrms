@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
@@ -33,6 +34,9 @@ export async function GET(
     }
 
     const { id } = await context.params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     const [employee] = await db
       .select()
@@ -151,6 +155,9 @@ export async function PATCH(
     }
 
     const { id } = await context.params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     const [employee] = await db
       .select()
@@ -247,6 +254,9 @@ export async function DELETE(
     }
 
     const { id } = await context.params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     const [employee] = await db
       .select()

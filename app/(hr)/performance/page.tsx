@@ -1,6 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardList, TargetIcon } from "lucide-react";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { StatusBadge } from "@/components/hr/status-badge";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type PerformanceReview = {
   id: string;
@@ -11,104 +31,229 @@ type PerformanceReview = {
   status: string;
 };
 
+type PerformanceGoal = {
+  id: string;
+  employeeId: string;
+  title: string;
+  description: string | null;
+  status: string;
+};
+
+type Employee = {
+  id: string;
+  firstName: string;
+  lastName: string | null;
+};
+
+const PAGE_SIZE = 10;
+
 export default function PerformancePage() {
   const [reviews, setReviews] = useState<PerformanceReview[]>([]);
+  const [goals, setGoals] = useState<PerformanceGoal[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [goalsPage, setGoalsPage] = useState(1);
 
   useEffect(() => {
-    async function loadReviews() {
+    async function loadAll() {
       try {
-        const response = await fetch("/api/performance");
+        const [reviewsResponse, goalsResponse, employeesResponse] =
+          await Promise.all([
+            fetch("/api/performance"),
+            fetch("/api/performance/goals"),
+            fetch("/api/employees"),
+          ]);
 
-        if (response.ok) {
-          const data = await response.json();
-
+        if (reviewsResponse.ok) {
+          const data = await reviewsResponse.json();
           setReviews(Array.isArray(data) ? data : []);
+        }
+
+        if (goalsResponse.ok) {
+          const data = await goalsResponse.json();
+          setGoals(Array.isArray(data) ? data : []);
+        }
+
+        if (employeesResponse.ok) {
+          const data = await employeesResponse.json();
+          setEmployees(Array.isArray(data) ? data : []);
         }
       } finally {
         setLoading(false);
       }
     }
 
-    loadReviews();
+    loadAll();
   }, []);
 
+  const employeeNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const employee of employees) {
+      map.set(
+        employee.id,
+        `${employee.firstName}${employee.lastName ? " " + employee.lastName : ""}`,
+      );
+    }
+    return map;
+  }, [employees]);
+
+  const pagedReviews = useMemo(
+    () => paginate(reviews, reviewsPage, PAGE_SIZE),
+    [reviews, reviewsPage],
+  );
+
+  const pagedGoals = useMemo(
+    () => paginate(goals, goalsPage, PAGE_SIZE),
+    [goals, goalsPage],
+  );
+
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Performance
-          </h1>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Performance"
+        description="Employee goals, reviews, ratings and manager comments."
+      />
 
-          <p className="mt-2 text-gray-500">
-            Employee goals, reviews, ratings and manager comments.
-          </p>
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-12 w-full" />
+          ))}
         </div>
+      ) : (
+        <Tabs defaultValue="reviews">
+          <TabsList>
+            <TabsTrigger value="reviews">Reviews</TabsTrigger>
+            <TabsTrigger value="goals">Goals</TabsTrigger>
+          </TabsList>
 
-        {loading ? (
-          <p className="text-gray-500">
-            Loading performance reviews...
-          </p>
-        ) : reviews.length === 0 ? (
-          <div className="rounded-xl border bg-white p-8 text-center shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">
-              No performance reviews
-            </h2>
+          <TabsContent value="reviews" className="mt-4">
+            {reviews.length === 0 ? (
+              <Card className="p-0">
+                <EmptyState
+                  icon={ClipboardList}
+                  title="No performance reviews"
+                  description="Performance reviews will appear here when they are created."
+                />
+              </Card>
+            ) : (
+              <Card className="overflow-hidden p-0">
+                <CardHeader className="border-b px-6 py-5">
+                  <CardTitle>Performance Reviews</CardTitle>
+                </CardHeader>
 
-            <p className="mt-2 text-gray-500">
-              Performance reviews will appear here when they are created.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                  <th className="px-6 py-4">Employee</th>
-                  <th className="px-6 py-4">Review Period</th>
-                  <th className="px-6 py-4">Rating</th>
-                  <th className="px-6 py-4">Comments</th>
-                  <th className="px-6 py-4">Status</th>
-                </tr>
-              </thead>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Review Period</TableHead>
+                      <TableHead>Rating</TableHead>
+                      <TableHead>Comments</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
 
-              <tbody>
-                {reviews.map((review) => (
-                  <tr
-                    key={review.id}
-                    className="border-b last:border-0"
-                  >
-                    <td className="px-6 py-4 text-sm">
-                      {review.employeeId}
-                    </td>
+                  <TableBody>
+                    {pagedReviews.map((review) => (
+                      <TableRow key={review.id}>
+                        <TableCell className="font-medium text-foreground">
+                          {employeeNameById.get(review.employeeId) ??
+                            review.employeeId}
+                        </TableCell>
 
-                    <td className="px-6 py-4 text-sm">
-                      {review.reviewPeriod}
-                    </td>
+                        <TableCell className="text-muted-foreground">
+                          {review.reviewPeriod}
+                        </TableCell>
 
-                    <td className="px-6 py-4">
-                      {review.rating !== null
-                        ? `${review.rating}/5`
-                        : "Not rated"}
-                    </td>
+                        <TableCell className="text-muted-foreground">
+                          {review.rating !== null
+                            ? `${review.rating}/5`
+                            : "Not rated"}
+                        </TableCell>
 
-                    <td className="max-w-md px-6 py-4 text-sm text-gray-600">
-                      {review.comments || "No comments"}
-                    </td>
+                        <TableCell className="max-w-md text-muted-foreground">
+                          {review.comments || "No comments"}
+                        </TableCell>
 
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-gray-100 px-3 py-1 text-sm">
-                        {review.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </main>
+                        <TableCell>
+                          <StatusBadge status={review.status} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <DataTablePagination
+                  page={reviewsPage}
+                  pageSize={PAGE_SIZE}
+                  total={reviews.length}
+                  onPageChange={setReviewsPage}
+                />
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="goals" className="mt-4">
+            {goals.length === 0 ? (
+              <Card className="p-0">
+                <EmptyState
+                  icon={TargetIcon}
+                  title="No performance goals"
+                  description="Goals assigned to employees will appear here."
+                />
+              </Card>
+            ) : (
+              <Card className="overflow-hidden p-0">
+                <CardHeader className="border-b px-6 py-5">
+                  <CardTitle>Performance Goals</CardTitle>
+                </CardHeader>
+
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Goal</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody>
+                    {pagedGoals.map((goal) => (
+                      <TableRow key={goal.id}>
+                        <TableCell className="font-medium text-foreground">
+                          {employeeNameById.get(goal.employeeId) ??
+                            goal.employeeId}
+                        </TableCell>
+
+                        <TableCell className="text-foreground">
+                          {goal.title}
+                        </TableCell>
+
+                        <TableCell className="max-w-md text-muted-foreground">
+                          {goal.description || "No description"}
+                        </TableCell>
+
+                        <TableCell>
+                          <StatusBadge status={goal.status} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <DataTablePagination
+                  page={goalsPage}
+                  pageSize={PAGE_SIZE}
+                  total={goals.length}
+                  onPageChange={setGoalsPage}
+                />
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
   );
 }

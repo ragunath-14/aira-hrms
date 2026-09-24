@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { locations } from "@/db/schema";
@@ -28,6 +29,9 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
     const body = await request.json();
 
     const parsed = locationSchema.safeParse(body);
@@ -94,6 +98,9 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     const result = await db
       .delete(locations)

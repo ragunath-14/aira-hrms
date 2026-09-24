@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { and, eq } from "drizzle-orm";
 import { requireRole } from "@/lib/authorization";
 import { NextResponse } from "next/server";
@@ -32,6 +33,9 @@ export async function PATCH(
     }
 
     const { id } = await context.params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     const body = await request.json();
 
@@ -84,30 +88,110 @@ export async function PATCH(
     }
 
     if (action === "reject") {
-      const [updated] = await db
-        .update(leaveRequests)
-        .set({
-          status: "rejected",
-          managerId: null,
-          managerComment:
-            body.comment?.trim() || null,
-          updatedAt: new Date(),
-        })
+      // The update and the employee lookup are independent of each
+      // other (both only need leaveRequest, already in hand) — running
+      // them in parallel instead of sequentially halves the DB
+      // round-trips on this path, which matters a lot under real
+      // network latency to the database.
+      const [[updated], [employee]] = await Promise.all([
+        db
+          .update(leaveRequests)
+          .set({
+            status: "rejected",
+            managerId: null,
+            managerComment:
+              body.comment?.trim() || null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(
+                leaveRequests.id,
+                id,
+              ),
+              eq(
+                leaveRequests.tenantId,
+                auth.tenant.id,
+              ),
+            ),
+          )
+          .returning(),
+        db
+          .select({
+            userId: employees.userId,
+          })
+          .from(employees)
+          .where(
+            and(
+              eq(
+                employees.id,
+                leaveRequest.employeeId,
+              ),
+              eq(
+                employees.tenantId,
+                auth.tenant.id,
+              ),
+            ),
+          )
+          .limit(1),
+      ]);
+
+      await Promise.all([
+        employee?.userId
+          ? db.insert(notifications).values({
+              tenantId:
+                auth.tenant.id,
+              userId:
+                employee.userId,
+              type: "leave_rejected",
+              title: "Leave Request Rejected",
+              message: `Your leave request from ${leaveRequest.startDate} to ${leaveRequest.endDate} was rejected.${body.comment?.trim() ? ` Comment: ${body.comment.trim()}` : ""}`,
+              isRead: false,
+            })
+          : Promise.resolve(),
+        logAudit({
+          tenantId: auth.tenant.id,
+          userId: auth.user.id,
+          action: "leave_rejected",
+          entity: "leave_request",
+          entityId: id,
+        }),
+      ]);
+
+      return Response.json(updated);
+    }
+
+    // The balance lookup and the employee lookup (needed later for the
+    // notification) are both independent of each other — fetch them
+    // together instead of one-after-another.
+    const [[balance], [employeeForNotification]] = await Promise.all([
+      db
+        .select()
+        .from(leaveBalances)
         .where(
           and(
             eq(
-              leaveRequests.id,
-              id,
+              leaveBalances.tenantId,
+              auth.tenant.id,
             ),
             eq(
-              leaveRequests.tenantId,
-              auth.tenant.id,
+              leaveBalances.employeeId,
+              leaveRequest.employeeId,
+            ),
+            eq(
+              leaveBalances.leaveTypeId,
+              leaveRequest.leaveTypeId,
+            ),
+            eq(
+              leaveBalances.year,
+              new Date(
+                leaveRequest.startDate,
+              ).getUTCFullYear(),
             ),
           ),
         )
-        .returning();
-
-      const [employee] = await db
+        .limit(1),
+      db
         .select({
           userId: employees.userId,
         })
@@ -124,58 +208,8 @@ export async function PATCH(
             ),
           ),
         )
-        .limit(1);
-
-      if (employee?.userId) {
-        await db.insert(notifications).values({
-          tenantId:
-            auth.tenant.id,
-          userId:
-            employee.userId,
-          type: "leave_rejected",
-          title: "Leave Request Rejected",
-          message: `Your leave request from ${leaveRequest.startDate} to ${leaveRequest.endDate} was rejected.${body.comment?.trim() ? ` Comment: ${body.comment.trim()}` : ""}`,
-          isRead: false,
-        });
-      }
-
-      await logAudit({
-        tenantId: auth.tenant.id,
-        userId: auth.user.id,
-        action: "leave_rejected",
-        entity: "leave_request",
-        entityId: id,
-      });
-
-      return Response.json(updated);
-    }
-
-    const [balance] = await db
-      .select()
-      .from(leaveBalances)
-      .where(
-        and(
-          eq(
-            leaveBalances.tenantId,
-            auth.tenant.id,
-          ),
-          eq(
-            leaveBalances.employeeId,
-            leaveRequest.employeeId,
-          ),
-          eq(
-            leaveBalances.leaveTypeId,
-            leaveRequest.leaveTypeId,
-          ),
-          eq(
-            leaveBalances.year,
-            new Date(
-              leaveRequest.startDate,
-            ).getUTCFullYear(),
-          ),
-        ),
-      )
-      .limit(1);
+        .limit(1),
+    ]);
 
     if (!balance) {
       return Response.json(
@@ -208,89 +242,74 @@ export async function PATCH(
       balance.remainingDays -
       leaveRequest.totalDays;
 
-    await db
-      .update(leaveBalances)
-      .set({
-        usedDays: newUsedDays,
-        remainingDays:
-          newRemainingDays,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(
-            leaveBalances.id,
-            balance.id,
-          ),
-          eq(
-            leaveBalances.tenantId,
-            auth.tenant.id,
-          ),
-        ),
-      );
-
-    const [updated] = await db
-      .update(leaveRequests)
-      .set({
-        status: "approved",
-        managerId: null,
-        managerComment:
-          body.comment?.trim() || null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(
-            leaveRequests.id,
-            id,
-          ),
-          eq(
-            leaveRequests.tenantId,
-            auth.tenant.id,
+    // Both updates are independent writes — no need to wait for one
+    // before starting the other.
+    const [, [updated]] = await Promise.all([
+      db
+        .update(leaveBalances)
+        .set({
+          usedDays: newUsedDays,
+          remainingDays:
+            newRemainingDays,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(
+              leaveBalances.id,
+              balance.id,
+            ),
+            eq(
+              leaveBalances.tenantId,
+              auth.tenant.id,
+            ),
           ),
         ),
-      )
-      .returning();
-
-    const [employee] = await db
-      .select({
-        userId: employees.userId,
-      })
-      .from(employees)
-      .where(
-        and(
-          eq(
-            employees.id,
-            leaveRequest.employeeId,
+      db
+        .update(leaveRequests)
+        .set({
+          status: "approved",
+          managerId: null,
+          managerComment:
+            body.comment?.trim() || null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(
+              leaveRequests.id,
+              id,
+            ),
+            eq(
+              leaveRequests.tenantId,
+              auth.tenant.id,
+            ),
           ),
-          eq(
-            employees.tenantId,
-            auth.tenant.id,
-          ),
-        ),
-      )
-      .limit(1);
+        )
+        .returning(),
+    ]);
 
-    if (employee?.userId) {
-      await db.insert(notifications).values({
-        tenantId:
-          auth.tenant.id,
-        userId:
-          employee.userId,
-        type: "leave_approved",
-        title: "Leave Request Approved",
-        message: `Your leave request from ${leaveRequest.startDate} to ${leaveRequest.endDate} has been approved.`,
-        isRead: false,
-      });
-    }
-
-    await logAudit({
-      tenantId: auth.tenant.id,
-      userId: auth.user.id,
-      action: "leave_approved",
-      entity: "leave_request",
-      entityId: id,
-    });
+    await Promise.all([
+      employeeForNotification?.userId
+        ? db.insert(notifications).values({
+            tenantId:
+              auth.tenant.id,
+            userId:
+              employeeForNotification.userId,
+            type: "leave_approved",
+            title: "Leave Request Approved",
+            message: `Your leave request from ${leaveRequest.startDate} to ${leaveRequest.endDate} has been approved.`,
+            isRead: false,
+          })
+        : Promise.resolve(),
+      logAudit({
+        tenantId: auth.tenant.id,
+        userId: auth.user.id,
+        action: "leave_approved",
+        entity: "leave_request",
+        entityId: id,
+      }),
+    ]);
 
     return Response.json(updated);
   } catch (error) {
@@ -300,13 +319,7 @@ export async function PATCH(
     );
 
     return Response.json(
-      {
-        error: "Failed to process leave request",
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
-      },
+      { error: "Failed to process leave request" },
       { status: 500 },
     );
   }

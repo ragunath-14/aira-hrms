@@ -1,6 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type SystemConfig = {
   theme: string;
@@ -24,183 +38,255 @@ const defaultConfig: SystemConfig = {
 
 export default function SystemSettingsPage() {
   const [config, setConfig] = useState<SystemConfig>(defaultConfig);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("hrms_system_config");
-    if (saved) {
+    async function load() {
       try {
-        setConfig({ ...defaultConfig, ...JSON.parse(saved) });
-      } catch (e) {
-        console.error("Failed to parse system config:", e);
+        setLoading(true);
+        const response = await fetch("/api/settings/system");
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to load system settings");
+        }
+        setConfig({ ...defaultConfig, ...data });
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load system settings",
+        );
+      } finally {
+        setLoading(false);
       }
     }
+
+    load();
   }, []);
 
-  function handleSave(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setSuccess("");
+    try {
+      setSaving(true);
+      setSuccess("");
+      setError("");
 
-    setTimeout(() => {
-      localStorage.setItem("hrms_system_config", JSON.stringify(config));
-      setSaving(false);
+      const response = await fetch("/api/settings/system", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update system settings");
+      }
+
       setSuccess("System preferences updated successfully!");
-    }, 800);
+      toast.success("System preferences updated");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to update system settings";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 font-sans">
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">System Settings</h1>
-        <p className="mt-1.5 text-sm text-gray-500">Configure global application preferences and defaults.</p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        title="System Settings"
+        description="Configure global application preferences and defaults."
+      />
+
+      {error && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       {success && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 shadow-sm">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-700 dark:text-emerald-400">
           {success}
         </div>
       )}
 
+      {loading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+        </div>
+      ) : (
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Localization settings */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900 border-b pb-3">Localization & Appearance</h2>
-          <div className="grid gap-6 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Localization & Appearance</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-6 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Display Theme</label>
-              <select
+              <Label className="mb-1.5">Display Theme</Label>
+              <Select
                 value={config.theme}
-                onChange={(e) => setConfig({ ...config, theme: e.target.value })}
-                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                onValueChange={(value) =>
+                  setConfig({ ...config, theme: value ?? config.theme })
+                }
               >
-                <option value="light">Light Mode</option>
-                <option value="dark">Dark Mode</option>
-                <option value="system">Follow System Settings</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light Mode</SelectItem>
+                  <SelectItem value="dark">Dark Mode</SelectItem>
+                  <SelectItem value="system">Follow System Settings</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Primary Timezone</label>
-              <select
+              <Label className="mb-1.5">Primary Timezone</Label>
+              <Select
                 value={config.timezone}
-                onChange={(e) => setConfig({ ...config, timezone: e.target.value })}
-                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                onValueChange={(value) =>
+                  setConfig({ ...config, timezone: value ?? config.timezone })
+                }
               >
-                <option value="UTC">Coordinated Universal Time (UTC)</option>
-                <option value="America/New_York">Eastern Time (EST/EDT)</option>
-                <option value="America/Los_Angeles">Pacific Time (PST/PDT)</option>
-                <option value="Asia/Kolkata">India Standard Time (IST)</option>
-                <option value="Europe/London">London / Greenwich Time (GMT/BST)</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="UTC">Coordinated Universal Time (UTC)</SelectItem>
+                  <SelectItem value="America/New_York">Eastern Time (EST/EDT)</SelectItem>
+                  <SelectItem value="America/Los_Angeles">Pacific Time (PST/PDT)</SelectItem>
+                  <SelectItem value="Asia/Kolkata">India Standard Time (IST)</SelectItem>
+                  <SelectItem value="Europe/London">London / Greenwich Time (GMT/BST)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Default Language</label>
-              <select
+              <Label className="mb-1.5">Default Language</Label>
+              <Select
                 value={config.language}
-                onChange={(e) => setConfig({ ...config, language: e.target.value })}
-                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                onValueChange={(value) =>
+                  setConfig({ ...config, language: value ?? config.language })
+                }
               >
-                <option value="en">English (US)</option>
-                <option value="es">Español (Spanish)</option>
-                <option value="fr">Français (French)</option>
-                <option value="de">Deutsch (German)</option>
-                <option value="hi">हिन्दी (Hindi)</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English (US)</SelectItem>
+                  <SelectItem value="es">Español (Spanish)</SelectItem>
+                  <SelectItem value="fr">Français (French)</SelectItem>
+                  <SelectItem value="de">Deutsch (German)</SelectItem>
+                  <SelectItem value="hi">हिन्दी (Hindi)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Date Format</label>
-              <select
+              <Label className="mb-1.5">Date Format</Label>
+              <Select
                 value={config.dateFormat}
-                onChange={(e) => setConfig({ ...config, dateFormat: e.target.value })}
-                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                onValueChange={(value) =>
+                  setConfig({ ...config, dateFormat: value ?? config.dateFormat })
+                }
               >
-                <option value="DD/MM/YYYY">DD/MM/YYYY (e.g. 28/08/2026)</option>
-                <option value="MM/DD/YYYY">MM/DD/YYYY (e.g. 08/28/2026)</option>
-                <option value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2026-08-28)</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DD/MM/YYYY">DD/MM/YYYY (e.g. 28/08/2026)</SelectItem>
+                  <SelectItem value="MM/DD/YYYY">MM/DD/YYYY (e.g. 08/28/2026)</SelectItem>
+                  <SelectItem value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2026-08-28)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* Notifications toggles */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900 border-b pb-3">Email Notification Preferences</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-b-0">
+        <Card>
+          <CardHeader>
+            <CardTitle>Email Notification Preferences</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between border-b py-2 last:border-b-0">
               <div>
-                <p className="font-semibold text-gray-900">Payroll Reports</p>
-                <p className="text-xs text-gray-500 mt-0.5">Receive monthly payroll summaries and payslip receipts.</p>
+                <p className="font-semibold text-foreground">Payroll Reports</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Receive monthly payroll summaries and payslip receipts.
+                </p>
               </div>
               <label className="relative inline-flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   checked={config.notifyPayroll}
-                  onChange={(e) => setConfig({ ...config, notifyPayroll: e.target.checked })}
+                  onChange={(e) =>
+                    setConfig({ ...config, notifyPayroll: e.target.checked })
+                  }
                   className="peer sr-only"
                 />
-                <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none"></div>
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary-foreground peer-focus:outline-none"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-b-0">
+            <div className="flex items-center justify-between border-b py-2 last:border-b-0">
               <div>
-                <p className="font-semibold text-gray-900">Leave Requests & Approvals</p>
-                <p className="text-xs text-gray-500 mt-0.5">Alerts when team members request leave or leave state changes.</p>
+                <p className="font-semibold text-foreground">
+                  Leave Requests & Approvals
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Alerts when team members request leave or leave state changes.
+                </p>
               </div>
               <label className="relative inline-flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   checked={config.notifyLeave}
-                  onChange={(e) => setConfig({ ...config, notifyLeave: e.target.checked })}
+                  onChange={(e) =>
+                    setConfig({ ...config, notifyLeave: e.target.checked })
+                  }
                   className="peer sr-only"
                 />
-                <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none"></div>
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary-foreground peer-focus:outline-none"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-b-0">
+            <div className="flex items-center justify-between border-b py-2 last:border-b-0">
               <div>
-                <p className="font-semibold text-gray-900">System announcements</p>
-                <p className="text-xs text-gray-500 mt-0.5">Critical notifications about maintenance and workspace updates.</p>
+                <p className="font-semibold text-foreground">System announcements</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Critical notifications about maintenance and workspace updates.
+                </p>
               </div>
               <label className="relative inline-flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   checked={config.notifySystem}
-                  onChange={(e) => setConfig({ ...config, notifySystem: e.target.checked })}
+                  onChange={(e) =>
+                    setConfig({ ...config, notifySystem: e.target.checked })
+                  }
                   className="peer sr-only"
                 />
-                <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none"></div>
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary-foreground peer-focus:outline-none"></div>
               </label>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* Actions */}
         <div className="flex justify-end">
-          <button
-            disabled={saving}
-            type="submit"
-            className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed shadow-sm"
-          >
-            {saving ? (
-              <>
-                <svg className="mr-2 h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Saving System Preferences...
-              </>
-            ) : (
-              "Save System Settings"
-            )}
-          </button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save System Settings"}
+          </Button>
         </div>
       </form>
+      )}
     </div>
   );
 }

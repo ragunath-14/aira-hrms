@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { requireRole } from "@/lib/authorization";
 import { NextResponse } from "next/server";
@@ -51,6 +52,13 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
 
     const employeeId = searchParams.get("employeeId");
+
+    if (employeeId && !isUuid(employeeId)) {
+      return Response.json(
+        { error: "Invalid employeeId" },
+        { status: 400 },
+      );
+    }
     const status = searchParams.get("status");
 
     const canViewOthers = ["owner", "admin", "hr", "manager"].includes(
@@ -59,7 +67,10 @@ export async function GET(request: Request) {
 
     let targetEmployeeId: string | null = null;
 
-    if (employeeId && canViewOthers) {
+    if (!employeeId && canViewOthers) {
+      // HR/manager/owner fetching the whole tenant's requests in one call.
+      targetEmployeeId = null;
+    } else if (employeeId && canViewOthers) {
       const [employee] = await db
         .select({ id: employees.id })
         .from(employees)

@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { employees } from "@/db/schema/employees";
 import { payrollRecords } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
+import { createPayrollRecordWithRun } from "@/lib/payroll";
 import { payrollCreateSchema } from "@/lib/validations";
 
 export async function GET(request: Request) {
@@ -75,7 +77,7 @@ export async function POST(request: Request) {
     } = parsed.data;
 
     const [employee] = await db
-      .select({ id: employees.id })
+      .select({ id: employees.id, userId: employees.userId })
       .from(employees)
       .where(
         and(
@@ -92,19 +94,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const [record] = await db
-      .insert(payrollRecords)
-      .values({
-        tenantId: auth.tenant.id,
-        employeeId,
-        payrollPeriod,
-        basicSalary: String(basicSalary),
-        totalAllowances: String(totalAllowances ?? 0),
-        totalDeductions: String(totalDeductions ?? 0),
-        netSalary: String(netSalary),
-        status: status || "processed",
-      })
-      .returning();
+    const record = await createPayrollRecordWithRun({
+      tenantId: auth.tenant.id,
+      employeeId,
+      payrollPeriod,
+      basicSalary: String(basicSalary),
+      totalAllowances: String(totalAllowances ?? 0),
+      totalDeductions: String(totalDeductions ?? 0),
+      netSalary: String(netSalary),
+      status,
+    });
 
     await logAudit({
       tenantId: auth.tenant.id,
@@ -113,6 +112,16 @@ export async function POST(request: Request) {
       entity: "payroll_record",
       entityId: record.id,
     });
+
+    if (employee.userId) {
+      await createNotification({
+        tenantId: auth.tenant.id,
+        userId: employee.userId,
+        type: "payroll_generated",
+        title: "Payslip Generated",
+        message: `Your payroll for ${payrollPeriod} has been processed.`,
+      });
+    }
 
     return NextResponse.json(record, { status: 201 });
   } catch (error) {

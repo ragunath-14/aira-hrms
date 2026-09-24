@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
 
 export const tenants = pgTable("tenants", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -22,6 +22,11 @@ export const tenants = pgTable("tenants", {
   country: text("country"),
 
   logo: text("logo"),
+
+  settings: jsonb("settings")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 

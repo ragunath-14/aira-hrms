@@ -3,18 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { requireRole } from "@/lib/authorization";
 import { db } from "@/db";
 import { salaryComponents } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
-
-    if (!context) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
     const auth = await requireRole(request, [
       "owner",
       "admin",
@@ -34,7 +25,7 @@ export async function GET(request: Request) {
       .where(
         eq(
           salaryComponents.tenantId,
-          context.tenant.id,
+          auth.tenant.id,
         ),
       );
 
@@ -54,14 +45,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
-
-    if (!context) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
     const auth = await requireRole(request, [
       "owner",
       "admin",
@@ -100,7 +83,7 @@ export async function POST(request: Request) {
     const [component] = await db
       .insert(salaryComponents)
       .values({
-        tenantId: context.tenant.id,
+        tenantId: auth.tenant.id,
         name: name.trim(),
         type: type.trim(),
         amount: String(amount),

@@ -1,6 +1,59 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  ClipboardListIcon,
+  CheckCircle2Icon,
+  XCircleIcon,
+  CalendarDaysIcon,
+  PlusIcon,
+  MessageSquareIcon,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { StatCard } from "@/components/hr/stat-card";
+import { StatusBadge } from "@/components/hr/status-badge";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Employee = {
   id: string;
@@ -16,6 +69,11 @@ type LeaveType = {
   description: string | null;
   daysPerYear: number;
   isActive: string;
+  carryForwardLimit: number | null;
+  maxConsecutiveDays: number | null;
+  minNoticeDays: number | null;
+  encashmentAllowed: boolean;
+  rulesText: string | null;
 };
 
 type LeaveBalance = {
@@ -43,11 +101,53 @@ type LeaveRequest = {
   createdAt: string;
 };
 
+type EncashmentRequest = {
+  id: string;
+  employeeId: string;
+  leaveType: string;
+  year: number;
+  daysRequested: number;
+  reason: string | null;
+  status: string;
+  managerComment: string | null;
+  createdAt: string;
+};
+
+type AdjustmentRequest = {
+  id: string;
+  employeeId: string;
+  leaveType: string;
+  year: number;
+  requestedDays: number;
+  reason: string | null;
+  status: string;
+  managerComment: string | null;
+  createdAt: string;
+};
+
+type LtcClaim = {
+  id: string;
+  employeeId: string;
+  blockYear: string;
+  destination: string | null;
+  amountClaimed: string;
+  reason: string | null;
+  status: string;
+  managerComment: string | null;
+  createdAt: string;
+};
+
+const ALL = "all";
+const PAGE_SIZE = 10;
+
 export default function LeaveManagementPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [encashments, setEncashments] = useState<EncashmentRequest[]>([]);
+  const [adjustments, setAdjustments] = useState<AdjustmentRequest[]>([]);
+  const [ltcClaims, setLtcClaims] = useState<LtcClaim[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState("");
@@ -55,19 +155,46 @@ export default function LeaveManagementPage() {
   const [success, setSuccess] = useState("");
 
   const [activeTab, setActiveTab] = useState<
-    "requests" | "balances" | "types"
+    | "requests"
+    | "balances"
+    | "types"
+    | "encashments"
+    | "adjustments"
+    | "ltc"
   >("requests");
 
   const [statusFilter, setStatusFilter] = useState("pending");
-  const [employeeFilter, setEmployeeFilter] = useState("");
+  const [employeeFilter, setEmployeeFilter] = useState(ALL);
+  const [requestsPage, setRequestsPage] = useState(1);
+  const [balancesPage, setBalancesPage] = useState(1);
 
   const [showTypeForm, setShowTypeForm] = useState(false);
   const [typeName, setTypeName] = useState("");
   const [typeDescription, setTypeDescription] = useState("");
   const [typeDays, setTypeDays] = useState("12");
+  const [typeCarryForward, setTypeCarryForward] = useState("");
+  const [typeMaxConsecutive, setTypeMaxConsecutive] = useState("");
+  const [typeMinNotice, setTypeMinNotice] = useState("");
+  const [typeEncashmentAllowed, setTypeEncashmentAllowed] = useState("false");
+  const [typeRulesText, setTypeRulesText] = useState("");
+
+  const [editingType, setEditingType] = useState<LeaveType | null>(null);
+  const [editCarryForward, setEditCarryForward] = useState("");
+  const [editMaxConsecutive, setEditMaxConsecutive] = useState("");
+  const [editMinNotice, setEditMinNotice] = useState("");
+  const [editEncashmentAllowed, setEditEncashmentAllowed] = useState("false");
+  const [editRulesText, setEditRulesText] = useState("");
+  const [savingRules, setSavingRules] = useState(false);
 
   const [commentRequestId, setCommentRequestId] = useState("");
   const [managerComment, setManagerComment] = useState("");
+
+  const [encashmentCommentId, setEncashmentCommentId] = useState("");
+  const [encashmentComment, setEncashmentComment] = useState("");
+  const [adjustmentCommentId, setAdjustmentCommentId] = useState("");
+  const [adjustmentComment, setAdjustmentComment] = useState("");
+  const [ltcCommentId, setLtcCommentId] = useState("");
+  const [ltcComment, setLtcComment] = useState("");
 
   async function loadEmployees() {
     const response = await fetch("/api/employees");
@@ -94,56 +221,72 @@ export default function LeaveManagementPage() {
     setLeaveTypes(Array.isArray(data) ? data : []);
   }
 
-  async function loadBalances(employeeList: Employee[]) {
-    const results: LeaveBalance[] = [];
+  // HR/manager/owner callers get every employee's balances back from a
+  // single request (the API omits the employeeId filter for them) —
+  // this used to loop once per employee (N+1) before that support existed.
+  async function loadBalances() {
+    const response = await fetch("/api/leave-balances");
 
-    for (const employee of employeeList) {
-      try {
-        const response = await fetch(
-          `/api/leave-balances?employeeId=${employee.id}`,
-        );
-
-        if (!response.ok) {
-          continue;
-        }
-
-        const data = await response.json();
-
-        if (Array.isArray(data)) {
-          results.push(...data);
-        }
-      } catch {
-        // Ignore individual employee balance failures.
-      }
+    if (!response.ok) {
+      setBalances([]);
+      return;
     }
 
-    setBalances(results);
+    const data = await response.json();
+
+    setBalances(Array.isArray(data) ? data : []);
   }
 
-  async function loadRequests(employeeList: Employee[]) {
-    const results: LeaveRequest[] = [];
+  async function loadRequests() {
+    const response = await fetch("/api/leave-requests");
 
-    for (const employee of employeeList) {
-      try {
-        const response = await fetch(
-          `/api/leave-requests?employeeId=${employee.id}`,
-        );
-
-        if (!response.ok) {
-          continue;
-        }
-
-        const data = await response.json();
-
-        if (Array.isArray(data)) {
-          results.push(...data);
-        }
-      } catch {
-        // Ignore individual employee request failures.
-      }
+    if (!response.ok) {
+      setRequests([]);
+      return;
     }
 
-    setRequests(results);
+    const data = await response.json();
+
+    setRequests(Array.isArray(data) ? data : []);
+  }
+
+  async function loadEncashments() {
+    const response = await fetch("/api/leave-encashment");
+
+    if (!response.ok) {
+      setEncashments([]);
+      return;
+    }
+
+    const data = await response.json();
+
+    setEncashments(Array.isArray(data) ? data : []);
+  }
+
+  async function loadAdjustments() {
+    const response = await fetch("/api/leave-adjustment");
+
+    if (!response.ok) {
+      setAdjustments([]);
+      return;
+    }
+
+    const data = await response.json();
+
+    setAdjustments(Array.isArray(data) ? data : []);
+  }
+
+  async function loadLtcClaims() {
+    const response = await fetch("/api/ltc-claims");
+
+    if (!response.ok) {
+      setLtcClaims([]);
+      return;
+    }
+
+    const data = await response.json();
+
+    setLtcClaims(Array.isArray(data) ? data : []);
   }
 
   async function loadData() {
@@ -151,12 +294,14 @@ export default function LeaveManagementPage() {
       setLoading(true);
       setError("");
 
-      const employeeList = await loadEmployees();
-
       await Promise.all([
+        loadEmployees(),
         loadLeaveTypes(),
-        loadBalances(employeeList),
-        loadRequests(employeeList),
+        loadBalances(),
+        loadRequests(),
+        loadEncashments(),
+        loadAdjustments(),
+        loadLtcClaims(),
       ]);
     } catch (err) {
       setError(
@@ -171,6 +316,7 @@ export default function LeaveManagementPage() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function employeeName(employeeId: string) {
@@ -221,22 +367,187 @@ export default function LeaveManagementPage() {
         );
       }
 
-      setSuccess(
+      const message =
         action === "approve"
           ? "Leave request approved successfully."
-          : "Leave request rejected successfully.",
-      );
+          : "Leave request rejected successfully.";
+
+      setSuccess(message);
+      toast.success(message);
 
       setCommentRequestId("");
       setManagerComment("");
 
       await loadData();
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Failed to process leave request",
+          : "Failed to process leave request";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function processEncashment(
+    requestId: string,
+    action: "approve" | "reject",
+  ) {
+    try {
+      setActionLoading(requestId);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `/api/leave-encashment/${requestId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            comment:
+              encashmentCommentId === requestId
+                ? encashmentComment
+                : "",
+          }),
+        },
       );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to process encashment request",
+        );
+      }
+
+      const message =
+        action === "approve"
+          ? "Encashment request approved successfully."
+          : "Encashment request rejected successfully.";
+
+      setSuccess(message);
+      toast.success(message);
+      setEncashmentCommentId("");
+      setEncashmentComment("");
+
+      await loadData();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to process encashment request";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function processAdjustment(
+    requestId: string,
+    action: "approve" | "reject",
+  ) {
+    try {
+      setActionLoading(requestId);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `/api/leave-adjustment/${requestId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            comment:
+              adjustmentCommentId === requestId
+                ? adjustmentComment
+                : "",
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to process adjustment request",
+        );
+      }
+
+      const message =
+        action === "approve"
+          ? "Adjustment request approved successfully."
+          : "Adjustment request rejected successfully.";
+
+      setSuccess(message);
+      toast.success(message);
+      setAdjustmentCommentId("");
+      setAdjustmentComment("");
+
+      await loadData();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to process adjustment request";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function processLtcClaim(
+    requestId: string,
+    action: "approve" | "reject",
+  ) {
+    try {
+      setActionLoading(requestId);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `/api/ltc-claims/${requestId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            comment: ltcCommentId === requestId ? ltcComment : "",
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to process LTC claim",
+        );
+      }
+
+      const message =
+        action === "approve"
+          ? "LTC claim approved successfully."
+          : "LTC claim rejected successfully.";
+
+      setSuccess(message);
+      toast.success(message);
+      setLtcCommentId("");
+      setLtcComment("");
+
+      await loadData();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to process LTC claim";
+      setError(message);
+      toast.error(message);
     } finally {
       setActionLoading("");
     }
@@ -261,6 +572,11 @@ export default function LeaveManagementPage() {
           name: typeName.trim(),
           description: typeDescription.trim(),
           daysPerYear: Number(typeDays),
+          carryForwardLimit: typeCarryForward ? Number(typeCarryForward) : null,
+          maxConsecutiveDays: typeMaxConsecutive ? Number(typeMaxConsecutive) : null,
+          minNoticeDays: typeMinNotice ? Number(typeMinNotice) : null,
+          encashmentAllowed: typeEncashmentAllowed === "true",
+          rulesText: typeRulesText.trim(),
         }),
       });
 
@@ -273,32 +589,89 @@ export default function LeaveManagementPage() {
       }
 
       setSuccess("Leave type created successfully.");
+      toast.success("Leave type created successfully.");
       setShowTypeForm(false);
       setTypeName("");
       setTypeDescription("");
       setTypeDays("12");
+      setTypeCarryForward("");
+      setTypeMaxConsecutive("");
+      setTypeMinNotice("");
+      setTypeEncashmentAllowed("false");
+      setTypeRulesText("");
 
       await loadLeaveTypes();
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Failed to create leave type",
-      );
+          : "Failed to create leave type";
+      setError(message);
+      toast.error(message);
     } finally {
       setActionLoading("");
+    }
+  }
+
+  function openEditRules(leaveType: LeaveType) {
+    setEditingType(leaveType);
+    setEditCarryForward(leaveType.carryForwardLimit?.toString() ?? "");
+    setEditMaxConsecutive(leaveType.maxConsecutiveDays?.toString() ?? "");
+    setEditMinNotice(leaveType.minNoticeDays?.toString() ?? "");
+    setEditEncashmentAllowed(leaveType.encashmentAllowed ? "true" : "false");
+    setEditRulesText(leaveType.rulesText ?? "");
+  }
+
+  async function saveRules() {
+    if (!editingType) return;
+
+    try {
+      setSavingRules(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(`/api/leave-types/${editingType.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          carryForwardLimit: editCarryForward ? Number(editCarryForward) : null,
+          maxConsecutiveDays: editMaxConsecutive ? Number(editMaxConsecutive) : null,
+          minNoticeDays: editMinNotice ? Number(editMinNotice) : null,
+          encashmentAllowed: editEncashmentAllowed === "true",
+          rulesText: editRulesText.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update leave type rules");
+      }
+
+      setSuccess("Leave type rules updated successfully.");
+      toast.success("Leave type rules updated successfully.");
+      setEditingType(null);
+
+      await loadLeaveTypes();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update leave type rules";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSavingRules(false);
     }
   }
 
   const filteredRequests = useMemo(() => {
     return requests
       .filter((request) =>
-        statusFilter
+        statusFilter && statusFilter !== ALL
           ? request.status === statusFilter
           : true,
       )
       .filter((request) =>
-        employeeFilter
+        employeeFilter !== ALL
           ? request.employeeId === employeeFilter
           : true,
       )
@@ -312,6 +685,20 @@ export default function LeaveManagementPage() {
     statusFilter,
     employeeFilter,
   ]);
+
+  useEffect(() => {
+    setRequestsPage(1);
+  }, [statusFilter, employeeFilter]);
+
+  const pagedRequests = useMemo(
+    () => paginate(filteredRequests, requestsPage, PAGE_SIZE),
+    [filteredRequests, requestsPage],
+  );
+
+  const pagedBalances = useMemo(
+    () => paginate(balances, balancesPage, PAGE_SIZE),
+    [balances, balancesPage],
+  );
 
   const pendingCount = requests.filter(
     (request) => request.status === "pending",
@@ -332,672 +719,936 @@ export default function LeaveManagementPage() {
   );
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Leave Management
-            </h1>
-
-            <p className="mt-2 text-gray-500">
-              Manage leave types, employee balances and leave requests.
-            </p>
-          </div>
-
-          {activeTab === "types" && (
-            <button
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Leave Management"
+        description="Manage leave types, employee balances and leave requests."
+        action={
+          activeTab === "types" ? (
+            <Button
               type="button"
-              onClick={() =>
-                setShowTypeForm((value) => !value)
-              }
-              className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800"
+              onClick={() => setShowTypeForm((value) => !value)}
             >
-              {showTypeForm
-                ? "Cancel"
-                : "Add Leave Type"}
-            </button>
-          )}
+              <PlusIcon />
+              {showTypeForm ? "Cancel" : "Add Leave Type"}
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {error && (
+        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-            {success}
-          </div>
-        )}
-
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard
-            title="Pending Requests"
-            value={pendingCount}
-          />
-
-          <SummaryCard
-            title="Approved"
-            value={approvedCount}
-          />
-
-          <SummaryCard
-            title="Rejected"
-            value={rejectedCount}
-          />
-
-          <SummaryCard
-            title="Remaining Leave Days"
-            value={totalRemainingDays}
-          />
+      {success && (
+        <div className="mb-6 rounded-lg border border-primary/20 bg-primary/10 p-4 text-sm text-primary">
+          {success}
         </div>
+      )}
 
-        <div className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-white p-2 shadow-sm">
-          <TabButton
-            active={activeTab === "requests"}
-            onClick={() => setActiveTab("requests")}
-          >
-            Leave Requests
-          </TabButton>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Pending Requests"
+          value={pendingCount}
+          icon={ClipboardListIcon}
+        />
+        <StatCard
+          label="Approved"
+          value={approvedCount}
+          icon={CheckCircle2Icon}
+        />
+        <StatCard
+          label="Rejected"
+          value={rejectedCount}
+          icon={XCircleIcon}
+        />
+        <StatCard
+          label="Remaining Leave Days"
+          value={totalRemainingDays}
+          icon={CalendarDaysIcon}
+        />
+      </div>
 
-          <TabButton
-            active={activeTab === "balances"}
-            onClick={() => setActiveTab("balances")}
-          >
-            Leave Balances
-          </TabButton>
-
-          <TabButton
-            active={activeTab === "types"}
-            onClick={() => setActiveTab("types")}
-          >
-            Leave Types
-          </TabButton>
-        </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) =>
+          setActiveTab((value as typeof activeTab) ?? "requests")
+        }
+      >
+        <TabsList className="mb-6 h-auto w-full flex-wrap justify-start gap-1">
+          <TabsTrigger value="requests">Leave Requests</TabsTrigger>
+          <TabsTrigger value="balances">Leave Balances</TabsTrigger>
+          <TabsTrigger value="types">Leave Types</TabsTrigger>
+          <TabsTrigger value="encashments">Encashment</TabsTrigger>
+          <TabsTrigger value="adjustments">Adjustment</TabsTrigger>
+          <TabsTrigger value="ltc">LTC Claims</TabsTrigger>
+        </TabsList>
 
         {loading ? (
-          <div className="rounded-xl border bg-white p-10 text-center shadow-sm">
-            <p className="text-sm text-gray-500">
-              Loading leave management...
-            </p>
-          </div>
+          <Card>
+            <CardContent className="space-y-2 p-6">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+              ))}
+            </CardContent>
+          </Card>
         ) : (
           <>
-            {activeTab === "requests" && (
-              <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+            <TabsContent value="requests">
+              <Card className="overflow-hidden p-0">
                 <div className="border-b px-6 py-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                      <h2 className="text-xl font-semibold text-gray-900">
+                      <h2 className="text-lg font-semibold text-foreground">
                         Leave Requests
                       </h2>
-
-                      <p className="mt-1 text-sm text-gray-500">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         Review and process employee leave applications.
                       </p>
                     </div>
 
                     <div className="flex flex-col gap-3 sm:flex-row">
-                      <select
-                        value={statusFilter}
-                        onChange={(event) =>
+                      <Select
+                        value={statusFilter || ALL}
+                        onValueChange={(value) =>
                           setStatusFilter(
-                            event.target.value,
+                            value === ALL ? "" : (value ?? ""),
                           )
                         }
-                        className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none"
                       >
-                        <option value="">
-                          All Statuses
-                        </option>
-                        <option value="pending">
-                          Pending
-                        </option>
-                        <option value="approved">
-                          Approved
-                        </option>
-                        <option value="rejected">
-                          Rejected
-                        </option>
-                      </select>
+                        <SelectTrigger className="w-full sm:w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL}>All Statuses</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                        </SelectContent>
+                      </Select>
 
-                      <select
+                      <Select
                         value={employeeFilter}
-                        onChange={(event) =>
-                          setEmployeeFilter(
-                            event.target.value,
-                          )
+                        onValueChange={(value) =>
+                          setEmployeeFilter(value ?? ALL)
                         }
-                        className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none"
                       >
-                        <option value="">
-                          All Employees
-                        </option>
-
-                        {employees.map((employee) => (
-                          <option
-                            key={employee.id}
-                            value={employee.id}
-                          >
-                            {employeeName(employee.id)}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="w-full sm:w-56">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL}>All Employees</SelectItem>
+                          {employees.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.id}>
+                              {employeeName(employee.id)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
 
                 {filteredRequests.length === 0 ? (
-                  <div className="p-10 text-center">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      No leave requests found
-                    </h3>
-
-                    <p className="mt-2 text-sm text-gray-500">
-                      There are no requests matching the selected filters.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={ClipboardListIcon}
+                    title="No leave requests found"
+                    description="There are no requests matching the selected filters."
+                  />
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                          <th className="px-6 py-4 font-medium">
-                            Employee
-                          </th>
+                  <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Leave Type</TableHead>
+                        <TableHead>Dates</TableHead>
+                        <TableHead>Days</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedRequests.map((request) => (
+                        <TableRow key={request.id}>
+                          <TableCell>
+                            <div className="font-medium text-foreground">
+                              {employeeName(request.employeeId)}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {
+                                employees.find(
+                                  (employee) =>
+                                    employee.id === request.employeeId,
+                                )?.employeeCode
+                              }
+                            </div>
+                          </TableCell>
 
-                          <th className="px-6 py-4 font-medium">
-                            Leave Type
-                          </th>
+                          <TableCell className="text-muted-foreground">
+                            {request.leaveType}
+                          </TableCell>
 
-                          <th className="px-6 py-4 font-medium">
-                            Dates
-                          </th>
+                          <TableCell className="text-muted-foreground">
+                            {request.startDate} → {request.endDate}
+                          </TableCell>
 
-                          <th className="px-6 py-4 font-medium">
-                            Days
-                          </th>
+                          <TableCell className="font-medium text-foreground">
+                            {request.totalDays}
+                          </TableCell>
 
-                          <th className="px-6 py-4 font-medium">
-                            Reason
-                          </th>
+                          <TableCell className="max-w-xs truncate text-muted-foreground">
+                            {request.reason || "—"}
+                          </TableCell>
 
-                          <th className="px-6 py-4 font-medium">
-                            Status
-                          </th>
+                          <TableCell>
+                            <StatusBadge status={request.status} />
+                          </TableCell>
 
-                          <th className="px-6 py-4 font-medium">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {filteredRequests.map(
-                          (request) => (
-                            <tr
-                              key={request.id}
-                              className="border-b last:border-0"
-                            >
-                              <td className="px-6 py-4">
-                                <div className="font-medium text-gray-900">
-                                  {employeeName(
-                                    request.employeeId,
-                                  )}
-                                </div>
-
-                                <div className="mt-1 text-xs text-gray-500">
-                                  {
-                                    employees.find(
-                                      (employee) =>
-                                        employee.id ===
-                                        request.employeeId,
-                                    )?.employeeCode
-                                  }
-                                </div>
-                              </td>
-
-                              <td className="px-6 py-4 text-sm text-gray-700">
-                                {request.leaveType}
-                              </td>
-
-                              <td className="px-6 py-4 text-sm text-gray-600">
-                                {request.startDate} →{" "}
-                                {request.endDate}
-                              </td>
-
-                              <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                {request.totalDays}
-                              </td>
-
-                              <td className="max-w-xs px-6 py-4 text-sm text-gray-600">
-                                {request.reason || "—"}
-                              </td>
-
-                              <td className="px-6 py-4">
-                                <StatusBadge
-                                  status={request.status}
-                                />
-                              </td>
-
-                              <td className="px-6 py-4">
-                                {request.status ===
-                                "pending" ? (
-                                  <div className="flex min-w-[180px] flex-col gap-2">
-                                    {commentRequestId ===
-                                      request.id && (
-                                      <textarea
-                                        value={
-                                          managerComment
-                                        }
-                                        onChange={(event) =>
-                                          setManagerComment(
-                                            event.target
-                                              .value,
-                                          )
-                                        }
-                                        placeholder="Optional manager comment..."
-                                        rows={2}
-                                        className="rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-gray-500"
-                                      />
-                                    )}
-
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="button"
-                                        disabled={
-                                          actionLoading ===
-                                          request.id
-                                        }
-                                        onClick={() =>
-                                          processRequest(
-                                            request.id,
-                                            "approve",
-                                          )
-                                        }
-                                        className="rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                                      >
-                                        Approve
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        disabled={
-                                          actionLoading ===
-                                          request.id
-                                        }
-                                        onClick={() =>
-                                          processRequest(
-                                            request.id,
-                                            "reject",
-                                          )
-                                        }
-                                        className="rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                                      >
-                                        Reject
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setCommentRequestId(
-                                            commentRequestId ===
-                                              request.id
-                                              ? ""
-                                              : request.id,
-                                          );
-                                          setManagerComment(
-                                            "",
-                                          );
-                                        }}
-                                        className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                                      >
-                                        Comment
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-gray-400">
-                                    Processed
-                                  </span>
+                          <TableCell>
+                            {request.status === "pending" ? (
+                              <div className="flex min-w-50 flex-col gap-2">
+                                {commentRequestId === request.id && (
+                                  <Textarea
+                                    value={managerComment}
+                                    onChange={(event) =>
+                                      setManagerComment(
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="Optional manager comment..."
+                                    rows={2}
+                                  />
                                 )}
-                              </td>
-                            </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            )}
 
-            {activeTab === "balances" && (
-              <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={actionLoading === request.id}
+                                    onClick={() =>
+                                      processRequest(request.id, "approve")
+                                    }
+                                  >
+                                    Approve
+                                  </Button>
+
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    disabled={actionLoading === request.id}
+                                    onClick={() =>
+                                      processRequest(request.id, "reject")
+                                    }
+                                  >
+                                    Reject
+                                  </Button>
+
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setCommentRequestId(
+                                        commentRequestId === request.id
+                                          ? ""
+                                          : request.id,
+                                      );
+                                      setManagerComment("");
+                                    }}
+                                  >
+                                    <MessageSquareIcon />
+                                    Comment
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                Processed
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  <DataTablePagination
+                    page={requestsPage}
+                    pageSize={PAGE_SIZE}
+                    total={filteredRequests.length}
+                    onPageChange={setRequestsPage}
+                  />
+                  </>
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="balances">
+              <Card className="overflow-hidden p-0">
                 <div className="border-b px-6 py-5">
-                  <h2 className="text-xl font-semibold text-gray-900">
+                  <h2 className="text-lg font-semibold text-foreground">
                     Employee Leave Balances
                   </h2>
-
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     View allocated, used and remaining leave for employees.
                   </p>
                 </div>
 
                 {balances.length === 0 ? (
-                  <div className="p-10 text-center text-sm text-gray-500">
-                    No leave balances found.
-                  </div>
+                  <EmptyState
+                    icon={CalendarDaysIcon}
+                    title="No leave balances found"
+                  />
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                          <th className="px-6 py-4 font-medium">
-                            Employee
-                          </th>
+                  <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Leave Type</TableHead>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Allocated</TableHead>
+                        <TableHead>Used</TableHead>
+                        <TableHead>Remaining</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedBalances.map((balance) => (
+                        <TableRow key={balance.id}>
+                          <TableCell className="font-medium text-foreground">
+                            {employeeName(balance.employeeId)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {balance.leaveType}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {balance.year}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {balance.allocatedDays}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {balance.usedDays}
+                          </TableCell>
+                          <TableCell className="font-semibold text-foreground">
+                            {balance.remainingDays}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
-                          <th className="px-6 py-4 font-medium">
-                            Leave Type
-                          </th>
-
-                          <th className="px-6 py-4 font-medium">
-                            Year
-                          </th>
-
-                          <th className="px-6 py-4 font-medium">
-                            Allocated
-                          </th>
-
-                          <th className="px-6 py-4 font-medium">
-                            Used
-                          </th>
-
-                          <th className="px-6 py-4 font-medium">
-                            Remaining
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {balances.map((balance) => (
-                          <tr
-                            key={balance.id}
-                            className="border-b last:border-0"
-                          >
-                            <td className="px-6 py-4 font-medium text-gray-900">
-                              {employeeName(
-                                balance.employeeId,
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-700">
-                              {balance.leaveType}
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {balance.year}
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {balance.allocatedDays}
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {balance.usedDays}
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <span className="font-semibold text-gray-900">
-                                {balance.remainingDays}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <DataTablePagination
+                    page={balancesPage}
+                    pageSize={PAGE_SIZE}
+                    total={balances.length}
+                    onPageChange={setBalancesPage}
+                  />
+                  </>
                 )}
-              </section>
-            )}
+              </Card>
+            </TabsContent>
 
-            {activeTab === "types" && (
-              <>
-                {showTypeForm && (
-                  <section className="mb-6 rounded-xl border bg-white p-6 shadow-sm">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Add Leave Type
-                    </h2>
+            <TabsContent value="types">
+              {showTypeForm && (
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Add Leave Type</CardTitle>
+                  </CardHeader>
 
+                  <CardContent>
                     <form
                       onSubmit={createLeaveType}
-                      className="mt-5 grid gap-4 md:grid-cols-3"
+                      className="grid gap-4 md:grid-cols-3"
                     >
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-700">
-                          Leave Type
-                        </label>
-
-                        <input
+                        <Label className="mb-2">Leave Type</Label>
+                        <Input
                           value={typeName}
                           onChange={(event) =>
-                            setTypeName(
-                              event.target.value,
-                            )
+                            setTypeName(event.target.value)
                           }
                           placeholder="Casual Leave"
                           required
-                          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-700">
-                          Days Per Year
-                        </label>
-
-                        <input
+                        <Label className="mb-2">Days Per Year</Label>
+                        <Input
                           type="number"
                           min="0"
                           value={typeDays}
                           onChange={(event) =>
-                            setTypeDays(
-                              event.target.value,
-                            )
+                            setTypeDays(event.target.value)
                           }
                           required
-                          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-700">
-                          Description
-                        </label>
-
-                        <input
+                        <Label className="mb-2">Description</Label>
+                        <Input
                           value={typeDescription}
                           onChange={(event) =>
-                            setTypeDescription(
-                              event.target.value,
-                            )
+                            setTypeDescription(event.target.value)
                           }
                           placeholder="General paid leave"
-                          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="mb-2">Carry Forward Limit</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={typeCarryForward}
+                          onChange={(event) => setTypeCarryForward(event.target.value)}
+                          placeholder="Optional"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="mb-2">Max Consecutive Days</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={typeMaxConsecutive}
+                          onChange={(event) => setTypeMaxConsecutive(event.target.value)}
+                          placeholder="Optional"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="mb-2">Min Notice (Days)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={typeMinNotice}
+                          onChange={(event) => setTypeMinNotice(event.target.value)}
+                          placeholder="Optional"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="mb-2">Encashment</Label>
+                        <Select
+                          value={typeEncashmentAllowed}
+                          onValueChange={(value) => setTypeEncashmentAllowed(value ?? "false")}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="false">Not Allowed</SelectItem>
+                            <SelectItem value="true">Allowed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label className="mb-2">Rules Text</Label>
+                        <Input
+                          value={typeRulesText}
+                          onChange={(event) => setTypeRulesText(event.target.value)}
+                          placeholder="Shown to employees on the Leave Rules page"
                         />
                       </div>
 
                       <div className="md:col-span-3">
-                        <button
+                        <Button
                           type="submit"
-                          disabled={
-                            actionLoading === "leave-type"
-                          }
-                          className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                          disabled={actionLoading === "leave-type"}
                         >
-                          {actionLoading ===
-                          "leave-type"
-                            ? "Creating..."
+                          {actionLoading === "leave-type"
+                            ? "Creating…"
                             : "Create Leave Type"}
-                        </button>
+                        </Button>
                       </div>
                     </form>
-                  </section>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="overflow-hidden p-0">
+                <div className="border-b px-6 py-5">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Leave Types
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Configure the leave categories available to employees.
+                  </p>
+                </div>
+
+                {leaveTypes.length === 0 ? (
+                  <EmptyState
+                    icon={ClipboardListIcon}
+                    title="No leave types configured"
+                  />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Days / Year</TableHead>
+                        <TableHead>Encashment</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leaveTypes.map((leaveType) => (
+                        <TableRow key={leaveType.id}>
+                          <TableCell className="font-medium text-foreground">
+                            {leaveType.name}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {leaveType.description || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {leaveType.daysPerYear}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge
+                              status={leaveType.encashmentAllowed ? "active" : "inactive"}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge
+                              status={
+                                leaveType.isActive === "true"
+                                  ? "active"
+                                  : "inactive"
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditRules(leaveType)}
+                            >
+                              Edit Rules
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 )}
+              </Card>
+            </TabsContent>
 
-                <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-                  <div className="border-b px-6 py-5">
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      Leave Types
-                    </h2>
+            <TabsContent value="encashments">
+              <Card className="overflow-hidden p-0">
+                <div className="border-b px-6 py-5">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Leave Encashment Requests
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Review and process employee requests to encash unused leave.
+                  </p>
+                </div>
 
-                    <p className="mt-1 text-sm text-gray-500">
-                      Configure the leave categories available to employees.
-                    </p>
-                  </div>
-
-                  {leaveTypes.length === 0 ? (
-                    <div className="p-10 text-center text-sm text-gray-500">
-                      No leave types configured.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                            <th className="px-6 py-4 font-medium">
-                              Name
-                            </th>
-
-                            <th className="px-6 py-4 font-medium">
-                              Description
-                            </th>
-
-                            <th className="px-6 py-4 font-medium">
-                              Days / Year
-                            </th>
-
-                            <th className="px-6 py-4 font-medium">
-                              Status
-                            </th>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          {leaveTypes.map(
-                            (leaveType) => (
-                              <tr
-                                key={leaveType.id}
-                                className="border-b last:border-0"
-                              >
-                                <td className="px-6 py-4 font-medium text-gray-900">
-                                  {leaveType.name}
-                                </td>
-
-                                <td className="px-6 py-4 text-sm text-gray-600">
-                                  {leaveType.description ||
-                                    "—"}
-                                </td>
-
-                                <td className="px-6 py-4 text-sm text-gray-600">
-                                  {
-                                    leaveType.daysPerYear
-                                  }
-                                </td>
-
-                                <td className="px-6 py-4">
-                                  <StatusBadge
-                                    status={
-                                      leaveType.isActive ===
-                                      "true"
-                                        ? "active"
-                                        : "inactive"
+                {encashments.length === 0 ? (
+                  <EmptyState
+                    icon={ClipboardListIcon}
+                    title="No encashment requests"
+                  />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Leave Type</TableHead>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Days</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {encashments.map((request) => (
+                        <TableRow key={request.id}>
+                          <TableCell className="font-medium text-foreground">
+                            {employeeName(request.employeeId)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {request.leaveType}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {request.year}
+                          </TableCell>
+                          <TableCell className="font-medium text-foreground">
+                            {request.daysRequested}
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate text-muted-foreground">
+                            {request.reason || "—"}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={request.status} />
+                          </TableCell>
+                          <TableCell>
+                            {request.status === "pending" ? (
+                              <div className="flex min-w-50 flex-col gap-2">
+                                {encashmentCommentId === request.id && (
+                                  <Textarea
+                                    value={encashmentComment}
+                                    onChange={(event) =>
+                                      setEncashmentComment(event.target.value)
                                     }
+                                    placeholder="Optional comment..."
+                                    rows={2}
                                   />
-                                </td>
-                              </tr>
-                            ),
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </section>
-              </>
-            )}
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={actionLoading === request.id}
+                                    onClick={() => processEncashment(request.id, "approve")}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    disabled={actionLoading === request.id}
+                                    onClick={() => processEncashment(request.id, "reject")}
+                                  >
+                                    Reject
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEncashmentCommentId(
+                                        encashmentCommentId === request.id ? "" : request.id,
+                                      );
+                                      setEncashmentComment("");
+                                    }}
+                                  >
+                                    <MessageSquareIcon />
+                                    Comment
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Processed</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="adjustments">
+              <Card className="overflow-hidden p-0">
+                <div className="border-b px-6 py-5">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Leave Adjustment Requests
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Review and process employee-reported balance corrections.
+                  </p>
+                </div>
+
+                {adjustments.length === 0 ? (
+                  <EmptyState
+                    icon={ClipboardListIcon}
+                    title="No adjustment requests"
+                  />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Leave Type</TableHead>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Days</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {adjustments.map((request) => (
+                        <TableRow key={request.id}>
+                          <TableCell className="font-medium text-foreground">
+                            {employeeName(request.employeeId)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {request.leaveType}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {request.year}
+                          </TableCell>
+                          <TableCell className="font-medium text-foreground">
+                            {request.requestedDays > 0 ? "+" : ""}
+                            {request.requestedDays}
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate text-muted-foreground">
+                            {request.reason || "—"}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={request.status} />
+                          </TableCell>
+                          <TableCell>
+                            {request.status === "pending" ? (
+                              <div className="flex min-w-50 flex-col gap-2">
+                                {adjustmentCommentId === request.id && (
+                                  <Textarea
+                                    value={adjustmentComment}
+                                    onChange={(event) =>
+                                      setAdjustmentComment(event.target.value)
+                                    }
+                                    placeholder="Optional comment..."
+                                    rows={2}
+                                  />
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={actionLoading === request.id}
+                                    onClick={() => processAdjustment(request.id, "approve")}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    disabled={actionLoading === request.id}
+                                    onClick={() => processAdjustment(request.id, "reject")}
+                                  >
+                                    Reject
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setAdjustmentCommentId(
+                                        adjustmentCommentId === request.id ? "" : request.id,
+                                      );
+                                      setAdjustmentComment("");
+                                    }}
+                                  >
+                                    <MessageSquareIcon />
+                                    Comment
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Processed</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="ltc">
+              <Card className="overflow-hidden p-0">
+                <div className="border-b px-6 py-5">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    LTC Claims
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Review and process Leave Travel Concession claims.
+                  </p>
+                </div>
+
+                {ltcClaims.length === 0 ? (
+                  <EmptyState
+                    icon={ClipboardListIcon}
+                    title="No LTC claims"
+                  />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Block Year</TableHead>
+                        <TableHead>Destination</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ltcClaims.map((claim) => (
+                        <TableRow key={claim.id}>
+                          <TableCell className="font-medium text-foreground">
+                            {employeeName(claim.employeeId)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {claim.blockYear}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {claim.destination || "—"}
+                          </TableCell>
+                          <TableCell className="font-medium text-foreground">
+                            ₹{Number(claim.amountClaimed).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={claim.status} />
+                          </TableCell>
+                          <TableCell>
+                            {claim.status === "pending" ? (
+                              <div className="flex min-w-50 flex-col gap-2">
+                                {ltcCommentId === claim.id && (
+                                  <Textarea
+                                    value={ltcComment}
+                                    onChange={(event) =>
+                                      setLtcComment(event.target.value)
+                                    }
+                                    placeholder="Optional comment..."
+                                    rows={2}
+                                  />
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={actionLoading === claim.id}
+                                    onClick={() => processLtcClaim(claim.id, "approve")}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    disabled={actionLoading === claim.id}
+                                    onClick={() => processLtcClaim(claim.id, "reject")}
+                                  >
+                                    Reject
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setLtcCommentId(
+                                        ltcCommentId === claim.id ? "" : claim.id,
+                                      );
+                                      setLtcComment("");
+                                    }}
+                                  >
+                                    <MessageSquareIcon />
+                                    Comment
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Processed</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+            </TabsContent>
           </>
         )}
-      </div>
-    </main>
-  );
-}
+      </Tabs>
 
-function SummaryCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm">
-      <p className="text-sm text-gray-500">
-        {title}
-      </p>
+      <Dialog open={!!editingType} onOpenChange={(open) => !open && setEditingType(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Rules — {editingType?.name}</DialogTitle>
+          </DialogHeader>
 
-      <p className="mt-2 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+          <div className="grid gap-4">
+            <div>
+              <Label className="mb-2">Carry Forward Limit</Label>
+              <Input
+                type="number"
+                min="0"
+                value={editCarryForward}
+                onChange={(event) => setEditCarryForward(event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-2">Max Consecutive Days</Label>
+              <Input
+                type="number"
+                min="0"
+                value={editMaxConsecutive}
+                onChange={(event) => setEditMaxConsecutive(event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-2">Min Notice (Days)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={editMinNotice}
+                onChange={(event) => setEditMinNotice(event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-2">Encashment</Label>
+              <Select
+                value={editEncashmentAllowed}
+                onValueChange={(value) => setEditEncashmentAllowed(value ?? "false")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="false">Not Allowed</SelectItem>
+                  <SelectItem value="true">Allowed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2">Rules Text</Label>
+              <Input
+                value={editRulesText}
+                onChange={(event) => setEditRulesText(event.target.value)}
+                placeholder="Shown to employees on the Leave Rules page"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingType(null)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={savingRules} onClick={saveRules}>
+              {savingRules ? "Saving…" : "Save Rules"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${
-        active
-          ? "bg-gray-900 text-white"
-          : "text-gray-600 hover:bg-gray-100"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function StatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const styles =
-    status === "approved" ||
-    status === "active"
-      ? "bg-green-100 text-green-700"
-      : status === "rejected"
-        ? "bg-red-100 text-red-700"
-        : status === "pending"
-          ? "bg-yellow-100 text-yellow-700"
-          : "bg-gray-100 text-gray-600";
-
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${styles}`}
-    >
-      {status}
-    </span>
   );
 }

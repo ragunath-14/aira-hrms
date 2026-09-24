@@ -6,6 +6,7 @@ import {
   timestamp,
   text,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -61,5 +62,6 @@ export const attendance = pgTable(
       table.employeeId,
       table.attendanceDate,
     ),
+    tenantIdIdx: index("attendance_tenant_id_idx").on(table.tenantId),
   }),
 );

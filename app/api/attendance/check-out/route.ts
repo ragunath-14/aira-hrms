@@ -3,35 +3,30 @@ import { eq, and } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
-import { getCurrentTenant } from "@/lib/authorization";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    // requireRole already resolves the tenant/user context internally —
+    // calling getCurrentTenant separately here duplicated that DB
+    // round-trip on every check-out.
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+      "manager",
+      "employee",
+    ]);
 
-    if (!context) {
-      return Response.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
 
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
-
-    const { tenant, user } = context;
+    const { tenant, user } = auth;
 
     const [employee] = await db
       .select()
@@ -95,6 +90,14 @@ if (!auth.authorized) {
         ),
       )
       .returning();
+
+    await logAudit({
+      tenantId: tenant.id,
+      userId: user.id,
+      action: "attendance_check_out",
+      entity: "attendance",
+      entityId: updatedAttendance.id,
+    });
 
     return Response.json(updatedAttendance);
   } catch (error) {

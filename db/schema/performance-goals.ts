@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   timestamp,
+  index,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -43,4 +44,8 @@ export const performanceGoals = pgTable(
       .defaultNow()
       .notNull(),
   },
+  (table) => [
+    index("performance_goals_tenant_id_idx").on(table.tenantId),
+    index("performance_goals_employee_id_idx").on(table.employeeId),
+  ],
 );

@@ -6,42 +6,53 @@ import {
   employees,
   performanceGoals,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+      "manager",
+      "employee",
+    ]);
 
-    if (!context) {
+    if (!auth.authorized) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
 
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
+    const canViewOthers = ["owner", "admin", "hr", "manager"].includes(
+      auth.role,
+    );
+
+    const conditions = [eq(performanceGoals.tenantId, auth.tenant.id)];
+
+    if (!canViewOthers) {
+      const [employee] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.userId, auth.user.id),
+            eq(employees.tenantId, auth.tenant.id),
+          ),
+        )
+        .limit(1);
+
+      if (!employee) {
+        return NextResponse.json([]);
+      }
+
+      conditions.push(eq(performanceGoals.employeeId, employee.id));
+    }
 
     const goals = await db
       .select()
       .from(performanceGoals)
-      .where(
-        eq(
-          performanceGoals.tenantId,
-          context.tenant.id,
-        ),
-      );
+      .where(and(...conditions));
 
     return NextResponse.json(goals);
   } catch (error) {
@@ -59,28 +70,20 @@ if (!auth.authorized) {
 
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+      "manager",
+      "employee",
+    ]);
 
-    if (!context) {
+    if (!auth.authorized) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
-
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
     const body = await request.json();
 
     const {
@@ -111,7 +114,7 @@ if (!auth.authorized) {
           eq(employees.id, employeeId),
           eq(
             employees.tenantId,
-            context.tenant.id,
+            auth.tenant.id,
           ),
         ),
       )
@@ -125,10 +128,10 @@ if (!auth.authorized) {
     }
 
     const canManageOthers = ["owner", "admin", "hr", "manager"].includes(
-      context.membership.role,
+      auth.role,
     );
 
-    if (!canManageOthers && employee.userId !== context.user.id) {
+    if (!canManageOthers && employee.userId !== auth.user.id) {
       return NextResponse.json(
         { error: "You can only create goals for yourself" },
         { status: 403 },
@@ -138,7 +141,7 @@ if (!auth.authorized) {
     const [goal] = await db
       .insert(performanceGoals)
       .values({
-        tenantId: context.tenant.id,
+        tenantId: auth.tenant.id,
         employeeId,
         title,
         description: description ?? null,
@@ -164,28 +167,20 @@ if (!auth.authorized) {
 
 export async function PATCH(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+      "manager",
+      "employee",
+    ]);
 
-    if (!context) {
+    if (!auth.authorized) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
-
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
 
     const body = await request.json();
 
@@ -220,7 +215,7 @@ if (!auth.authorized) {
           eq(performanceGoals.id, id),
           eq(
             performanceGoals.tenantId,
-            context.tenant.id,
+            auth.tenant.id,
           ),
         ),
       )
@@ -234,10 +229,10 @@ if (!auth.authorized) {
     }
 
     const canManageOthers = ["owner", "admin", "hr", "manager"].includes(
-      context.membership.role,
+      auth.role,
     );
 
-    if (!canManageOthers && existingGoal.employeeUserId !== context.user.id) {
+    if (!canManageOthers && existingGoal.employeeUserId !== auth.user.id) {
       return NextResponse.json(
         { error: "You can only update your own goals" },
         { status: 403 },
@@ -266,7 +261,7 @@ if (!auth.authorized) {
           eq(performanceGoals.id, id),
           eq(
             performanceGoals.tenantId,
-            context.tenant.id,
+            auth.tenant.id,
           ),
         ),
       )

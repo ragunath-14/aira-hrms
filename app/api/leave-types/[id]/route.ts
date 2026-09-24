@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { eq, and } from "drizzle-orm";
 import {
   getCurrentTenant,
@@ -42,6 +43,9 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
     const body = await request.json();
 
     const updateData: {
@@ -49,6 +53,11 @@ export async function PATCH(
       description?: string | null;
       daysPerYear?: number;
       isActive?: string;
+      carryForwardLimit?: number | null;
+      maxConsecutiveDays?: number | null;
+      minNoticeDays?: number | null;
+      encashmentAllowed?: boolean;
+      rulesText?: string | null;
       updatedAt: Date;
     } = {
       updatedAt: new Date(),
@@ -95,6 +104,29 @@ export async function PATCH(
       updateData.isActive = body.isActive
         ? "true"
         : "false";
+    }
+
+    if (body.carryForwardLimit !== undefined) {
+      updateData.carryForwardLimit =
+        body.carryForwardLimit === null ? null : Number(body.carryForwardLimit);
+    }
+
+    if (body.maxConsecutiveDays !== undefined) {
+      updateData.maxConsecutiveDays =
+        body.maxConsecutiveDays === null ? null : Number(body.maxConsecutiveDays);
+    }
+
+    if (body.minNoticeDays !== undefined) {
+      updateData.minNoticeDays =
+        body.minNoticeDays === null ? null : Number(body.minNoticeDays);
+    }
+
+    if (body.encashmentAllowed !== undefined) {
+      updateData.encashmentAllowed = Boolean(body.encashmentAllowed);
+    }
+
+    if (body.rulesText !== undefined) {
+      updateData.rulesText = body.rulesText?.trim() || null;
     }
 
     if (updateData.name !== undefined) {

@@ -48,6 +48,53 @@ export const leaveRequestCreateSchema = z.object({
   reason: z.string().trim().nullable().optional(),
 });
 
+export const leaveTypeRulesUpdateSchema = z.object({
+  carryForwardLimit: z.number().int().min(0).nullable().optional(),
+  maxConsecutiveDays: z.number().int().min(0).nullable().optional(),
+  minNoticeDays: z.number().int().min(0).nullable().optional(),
+  encashmentAllowed: z.boolean().optional(),
+  rulesText: z.string().trim().nullable().optional(),
+});
+
+export const leavePlanCreateSchema = z.object({
+  leaveTypeId: z.string().uuid().nullable().optional(),
+  startDate: z.string().min(1, "startDate is required"),
+  endDate: z.string().min(1, "endDate is required"),
+  note: z.string().trim().nullable().optional(),
+});
+
+export const leaveEncashmentCreateSchema = z.object({
+  leaveTypeId: z.string().uuid("A valid leave type is required"),
+  year: z.number().int(),
+  daysRequested: z.number().int().min(1, "daysRequested must be at least 1"),
+  reason: z.string().trim().nullable().optional(),
+});
+
+export const leaveAdjustmentCreateSchema = z.object({
+  leaveTypeId: z.string().uuid("A valid leave type is required"),
+  year: z.number().int(),
+  requestedDays: z
+    .number()
+    .int()
+    .refine((value) => value !== 0, "requestedDays cannot be 0"),
+  reason: z.string().trim().nullable().optional(),
+});
+
+export const ltcClaimCreateSchema = z.object({
+  blockYear: z.string().trim().min(1, "blockYear is required"),
+  travelStartDate: z.string().nullable().optional(),
+  travelEndDate: z.string().nullable().optional(),
+  destination: z.string().trim().nullable().optional(),
+  amountClaimed: z.number().min(0),
+  proofUrl: z.string().trim().nullable().optional(),
+  reason: z.string().trim().nullable().optional(),
+});
+
+export const approvalActionSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  comment: z.string().trim().nullable().optional(),
+});
+
 export const payrollCreateSchema = z.object({
   employeeId: z.string().uuid("A valid employee is required"),
   payrollPeriod: z.string().trim().min(1, "payrollPeriod is required"),

@@ -4,6 +4,7 @@ import {
   timestamp,
   uuid,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -28,5 +29,6 @@ export const memberships = pgTable(
   },
   (table) => ({
     userTenantUnique: unique().on(table.userId, table.tenantId),
+    tenantIdIdx: index("memberships_tenant_id_idx").on(table.tenantId),
   }),
 );

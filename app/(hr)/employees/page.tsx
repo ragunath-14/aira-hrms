@@ -1,7 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PlusIcon, UsersIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { SearchInput } from "@/components/hr/search-input";
+import { StatusBadge } from "@/components/hr/status-badge";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Employee = {
   id: string;
@@ -22,6 +61,9 @@ type Department = { id: string; name: string };
 type Designation = { id: string; name: string };
 type Location = { id: string; name: string };
 
+const PAGE_SIZE = 10;
+const NONE = "__none__";
+
 const emptyForm = {
   employeeCode: "",
   firstName: "",
@@ -29,10 +71,10 @@ const emptyForm = {
   email: "",
   phone: "",
   dateOfJoining: "",
-  departmentId: "",
-  designationId: "",
-  locationId: "",
-  managerId: "",
+  departmentId: NONE,
+  designationId: NONE,
+  locationId: NONE,
+  managerId: NONE,
 };
 
 export default function EmployeesPage() {
@@ -41,7 +83,8 @@ export default function EmployeesPage() {
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -65,12 +108,13 @@ export default function EmployeesPage() {
       setError("");
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
-      if (status) params.set("status", status);
+      if (status !== "all") params.set("status", status);
       const query = params.toString();
       const response = await fetch(`/api/employees${query ? `?${query}` : ""}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to fetch employees");
       setEmployees(Array.isArray(data) ? data : []);
+      setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch employees");
     } finally {
@@ -85,7 +129,7 @@ export default function EmployeesPage() {
   useEffect(() => {
     const timer = setTimeout(() => loadEmployees(), 300);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, status]);
 
   async function createEmployee(event: React.FormEvent) {
@@ -103,19 +147,24 @@ export default function EmployeesPage() {
           email: form.email.trim(),
           phone: form.phone.trim() || null,
           dateOfJoining: form.dateOfJoining || null,
-          departmentId: form.departmentId || null,
-          designationId: form.designationId || null,
-          locationId: form.locationId || null,
-          managerId: form.managerId || null,
+          departmentId: form.departmentId === NONE ? null : form.departmentId,
+          designationId:
+            form.designationId === NONE ? null : form.designationId,
+          locationId: form.locationId === NONE ? null : form.locationId,
+          managerId: form.managerId === NONE ? null : form.managerId,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create employee");
       setShowAddForm(false);
       setForm(emptyForm);
+      toast.success("Employee added");
       await loadEmployees();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create employee");
+      const message =
+        err instanceof Error ? err.message : "Failed to create employee";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -124,191 +173,342 @@ export default function EmployeesPage() {
   const nameOf = (emp: Employee) =>
     `${emp.firstName}${emp.lastName ? " " + emp.lastName : ""}`;
 
+  const pagedEmployees = useMemo(
+    () => paginate(employees, page, PAGE_SIZE),
+    [employees, page],
+  );
+
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Employees</h1>
-          <p className="mt-2 text-gray-500">Manage your organisation&apos;s employees.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => { setShowAddForm(true); setError(""); }}
-          className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800"
-        >
-          Add Employee
-        </button>
-      </div>
+      <PageHeader
+        title="Employees"
+        description="Manage your organisation's employees."
+        action={
+          <Button
+            onClick={() => {
+              setShowAddForm(true);
+              setError("");
+            }}
+          >
+            <PlusIcon />
+            Add Employee
+          </Button>
+        }
+      />
 
-      {/* Search / filter */}
-      <section className="rounded-xl border bg-white p-6 shadow-sm">
+      <Card className="p-4">
         <div className="flex flex-col gap-4 md:flex-row">
           <div className="flex-1">
-            <label htmlFor="employee-search" className="mb-2 block text-sm font-medium text-gray-700">Search employees</label>
-            <input
+            <Label htmlFor="employee-search" className="mb-2">
+              Search employees
+            </Label>
+            <SearchInput
               id="employee-search"
-              type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, email or employee code…"
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
             />
           </div>
+
           <div className="w-full md:w-48">
-            <label htmlFor="employee-status" className="mb-2 block text-sm font-medium text-gray-700">Status</label>
-            <select
-              id="employee-status"
+            <Label htmlFor="employee-status" className="mb-2">
+              Status
+            </Label>
+            <Select
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-gray-500"
+              onValueChange={(value) => setStatus(value ?? "all")}
             >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="terminated">Terminated</option>
-            </select>
+              <SelectTrigger id="employee-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="terminated">Terminated</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      </section>
+      </Card>
 
-      {/* Add Employee Form */}
-      {showAddForm && (
-        <section className="mt-6 rounded-xl border bg-white p-6 shadow-sm">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Add Employee</h2>
-              <p className="mt-1 text-sm text-gray-500">Create a new employee profile.</p>
-            </div>
-            <button type="button" onClick={() => setShowAddForm(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-          </div>
-          <form onSubmit={createEmployee} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Employee Code *</label>
-              <input required placeholder="EMP001" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} className="w-full rounded-lg border px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">First Name *</label>
-              <input required placeholder="First Name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="w-full rounded-lg border px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Last Name</label>
-              <input placeholder="Last Name" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="w-full rounded-lg border px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Email *</label>
-              <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded-lg border px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Phone</label>
-              <input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full rounded-lg border px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Date of Joining</label>
-              <input type="date" value={form.dateOfJoining} onChange={(e) => setForm({ ...form, dateOfJoining: e.target.value })} className="w-full rounded-lg border px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Department</label>
-              <select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })} className="w-full rounded-lg border bg-white px-4 py-2.5 text-sm">
-                <option value="">— Select Department —</option>
-                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Designation</label>
-              <select value={form.designationId} onChange={(e) => setForm({ ...form, designationId: e.target.value })} className="w-full rounded-lg border bg-white px-4 py-2.5 text-sm">
-                <option value="">— Select Designation —</option>
-                {designations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Location</label>
-              <select value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })} className="w-full rounded-lg border bg-white px-4 py-2.5 text-sm">
-                <option value="">— Select Location —</option>
-                {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Manager</label>
-              <select value={form.managerId} onChange={(e) => setForm({ ...form, managerId: e.target.value })} className="w-full rounded-lg border bg-white px-4 py-2.5 text-sm">
-                <option value="">— No Manager —</option>
-                {employees.map((e) => <option key={e.id} value={e.id}>{nameOf(e)}</option>)}
-              </select>
-            </div>
-            {error && <p className="lg:col-span-3 text-sm text-red-600">{error}</p>}
-            <div className="lg:col-span-3 flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setShowAddForm(false)} className="rounded-lg border px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
-              <button type="submit" disabled={saving} className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
-                {saving ? "Saving…" : "Save Employee"}
-              </button>
-            </div>
-          </form>
-        </section>
+      {error && (
+        <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
       )}
 
-      {error && !showAddForm && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
-      )}
-
-      {/* Employee list */}
-      <section className="mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
+      <Card className="mt-6 overflow-hidden p-0">
         <div className="border-b px-6 py-5">
-          <h2 className="text-xl font-semibold text-gray-900">Employee List</h2>
-          <p className="mt-1 text-sm text-gray-500">{employees.length} employee{employees.length !== 1 ? "s" : ""} found</p>
+          <h2 className="text-lg font-semibold text-foreground">
+            Employee List
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {employees.length} employee{employees.length !== 1 ? "s" : ""} found
+          </p>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-sm text-gray-500">Loading employees…</div>
-        ) : employees.length === 0 ? (
-          <div className="p-8 text-center">
-            <h3 className="text-lg font-semibold text-gray-900">No employees found</h3>
-            <p className="mt-2 text-sm text-gray-500">Try changing your search or status filter.</p>
+          <div className="space-y-2 p-6">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-12 w-full" />
+            ))}
           </div>
+        ) : employees.length === 0 ? (
+          <EmptyState
+            icon={UsersIcon}
+            title="No employees found"
+            description="Try changing your search or status filter."
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                  <th className="px-6 py-4 font-medium">Employee</th>
-                  <th className="px-6 py-4 font-medium">Code</th>
-                  <th className="px-6 py-4 font-medium">Email</th>
-                  <th className="px-6 py-4 font-medium">Phone</th>
-                  <th className="px-6 py-4 font-medium">Joining Date</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((employee) => (
-                  <tr key={employee.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">{nameOf(employee)}</div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{employee.employeeCode}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{employee.email}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{employee.phone ?? "—"}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {employee.dateOfJoining ? new Date(employee.dateOfJoining).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`rounded-full px-3 py-1 text-xs font-medium ${employee.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                        {employee.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Link
-                        href={`/employees/${employee.id}`}
-                        className="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Joining Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedEmployees.map((employee) => (
+                  <TableRow key={employee.id}>
+                    <TableCell className="font-medium text-foreground">
+                      {nameOf(employee)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {employee.employeeCode}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {employee.email}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {employee.phone ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {employee.dateOfJoining
+                        ? new Date(employee.dateOfJoining).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={employee.status} />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        render={<Link href={`/employees/${employee.id}`} />}
                       >
                         View Profile
-                      </Link>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+
+            <DataTablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={employees.length}
+              onPageChange={setPage}
+            />
+          </>
         )}
-      </section>
+      </Card>
+
+      <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Employee</DialogTitle>
+            <DialogDescription>
+              Create a new employee profile.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={createEmployee}
+            className="grid gap-4 md:grid-cols-2"
+          >
+            <div>
+              <Label className="mb-1.5">Employee Code *</Label>
+              <Input
+                required
+                placeholder="EMP001"
+                value={form.employeeCode}
+                onChange={(e) =>
+                  setForm({ ...form, employeeCode: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">First Name *</Label>
+              <Input
+                required
+                placeholder="First Name"
+                value={form.firstName}
+                onChange={(e) =>
+                  setForm({ ...form, firstName: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Last Name</Label>
+              <Input
+                placeholder="Last Name"
+                value={form.lastName}
+                onChange={(e) =>
+                  setForm({ ...form, lastName: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Email *</Label>
+              <Input
+                required
+                type="email"
+                placeholder="Email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Phone</Label>
+              <Input
+                placeholder="Phone"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Date of Joining</Label>
+              <Input
+                type="date"
+                value={form.dateOfJoining}
+                onChange={(e) =>
+                  setForm({ ...form, dateOfJoining: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Department</Label>
+              <Select
+                value={form.departmentId}
+                onValueChange={(value) =>
+                  setForm({ ...form, departmentId: value ?? NONE })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>— Select Department —</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Designation</Label>
+              <Select
+                value={form.designationId}
+                onValueChange={(value) =>
+                  setForm({ ...form, designationId: value ?? NONE })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>— Select Designation —</SelectItem>
+                  {designations.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Location</Label>
+              <Select
+                value={form.locationId}
+                onValueChange={(value) =>
+                  setForm({ ...form, locationId: value ?? NONE })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>— Select Location —</SelectItem>
+                  {locations.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Manager</Label>
+              <Select
+                value={form.managerId}
+                onValueChange={(value) =>
+                  setForm({ ...form, managerId: value ?? NONE })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>— No Manager —</SelectItem>
+                  {employees.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {nameOf(e)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {error && (
+              <p className="text-sm text-destructive md:col-span-2">
+                {error}
+              </p>
+            )}
+
+            <DialogFooter className="md:col-span-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddForm(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save Employee"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

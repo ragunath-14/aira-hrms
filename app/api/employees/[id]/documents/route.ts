@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
@@ -40,6 +41,9 @@ if (!roleCheck.authorized) {
     }
 
     const { id } = await context.params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     // Verify employee belongs to this tenant
     const [employee] = await db
@@ -113,6 +117,9 @@ if (!roleCheck.authorized) {
     }
 
     const { id } = await context.params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     // Verify employee belongs to this tenant
     const [employee] = await db
@@ -174,20 +181,6 @@ export async function DELETE(
       "admin",
       "hr",
     ]);
-    const roleCheck = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
-
-if (!roleCheck.authorized) {
-  return NextResponse.json(
-    { error: roleCheck.error },
-    { status: roleCheck.status },
-  );
-}
 
     if (!auth.authorized) {
       return NextResponse.json(
@@ -197,17 +190,20 @@ if (!roleCheck.authorized) {
     }
 
     const { id: docId } = await context.params;
+    if (!isUuid(docId)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get("employeeId");
 
-    if (!employeeId) {
+    if (!employeeId || !isUuid(employeeId)) {
       return NextResponse.json(
-        { error: "employeeId query param required" },
+        { error: "A valid employeeId query param is required" },
         { status: 400 },
       );
     }
 
-    await db
+    const deleted = await db
       .delete(employeeDocuments)
       .where(
         and(
@@ -215,7 +211,15 @@ if (!roleCheck.authorized) {
           eq(employeeDocuments.tenantId, auth.tenant.id),
           eq(employeeDocuments.employeeId, employeeId),
         ),
+      )
+      .returning({ id: employeeDocuments.id });
+
+    if (deleted.length === 0) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 },
       );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

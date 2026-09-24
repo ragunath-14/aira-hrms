@@ -1,6 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { PlusIcon, UsersIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { EmptyState } from "@/components/hr/empty-state";
+import { ConfirmDialog } from "@/components/hr/confirm-dialog";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Member = {
   id: string; // membershipId
@@ -11,11 +50,14 @@ type Member = {
   createdAt: string;
 };
 
+const PAGE_SIZE = 10;
+
 export default function UsersSettingsPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [page, setPage] = useState(1);
 
   // Add Member Form State
   const [showAddForm, setShowAddForm] = useState(false);
@@ -26,6 +68,7 @@ export default function UsersSettingsPage() {
 
   // Loading indicator for row level operations
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
 
   async function loadMembers() {
     try {
@@ -72,15 +115,19 @@ export default function UsersSettingsPage() {
       }
 
       setSuccess(`Successfully added ${newEmail} to the team!`);
+      toast.success(`Added ${newEmail} to the team`);
       setNewEmail("");
       setNewName("");
       setNewRole("employee");
       setShowAddForm(false);
-      
+
       // Reload
       await loadMembers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add member");
+      const message =
+        err instanceof Error ? err.message : "Failed to add member";
+      setError(message);
+      toast.error(message);
     } finally {
       setSavingMember(false);
     }
@@ -104,20 +151,23 @@ export default function UsersSettingsPage() {
       }
 
       setSuccess("User role updated successfully!");
+      toast.success("Role updated");
       setMembers((prev) =>
         prev.map((m) => (m.id === membershipId ? { ...m, role } : m))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update role");
+      const message =
+        err instanceof Error ? err.message : "Failed to update role";
+      setError(message);
+      toast.error(message);
     } finally {
       setProcessingId(null);
     }
   }
 
-  async function handleRemoveMember(membershipId: string, email: string) {
-    if (!confirm(`Are you sure you want to remove ${email} from the organization?`)) {
-      return;
-    }
+  async function handleRemoveMember() {
+    if (!memberToRemove) return;
+    const { id: membershipId, email } = memberToRemove;
 
     try {
       setProcessingId(membershipId);
@@ -134,195 +184,269 @@ export default function UsersSettingsPage() {
       }
 
       setSuccess(`Removed ${email} from the organization.`);
+      toast.success(`Removed ${email}`);
       setMembers((prev) => prev.filter((m) => m.id !== membershipId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove member");
+      const message =
+        err instanceof Error ? err.message : "Failed to remove member";
+      setError(message);
+      toast.error(message);
     } finally {
       setProcessingId(null);
+      setMemberToRemove(null);
     }
   }
 
-  const roleBadgeColor = (role: string) => {
+  const roleBadgeClass = (role: string) => {
     switch (role.toLowerCase()) {
       case "owner":
-        return "bg-purple-50 text-purple-700 border-purple-200";
+        return "bg-purple-100 text-purple-800 border border-purple-200";
       case "admin":
-        return "bg-rose-50 text-rose-700 border-rose-200";
+        return "bg-rose-100 text-rose-800 border border-rose-200";
       case "hr":
-        return "bg-sky-50 text-sky-700 border-sky-200";
+        return "bg-sky-100 text-sky-800 border border-sky-200";
       case "manager":
-        return "bg-amber-50 text-amber-700 border-amber-200";
+        return "bg-amber-100 text-amber-800 border border-amber-200";
       default:
-        return "bg-gray-50 text-gray-700 border-gray-200";
+        return "bg-gray-100 text-gray-800 border border-gray-200";
     }
   };
 
+  const pagedMembers = useMemo(
+    () => paginate(members, page, PAGE_SIZE),
+    [members, page],
+  );
+
   if (loading) {
     return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-          <p className="text-sm font-medium text-gray-500">Loading team members...</p>
-        </div>
+      <div className="mx-auto max-w-7xl">
+        <PageHeader
+          title="Team Members"
+          description="Manage user access permissions and company roles."
+        />
+        <Card className="p-6">
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-12 w-full" />
+            ))}
+          </div>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-gray-200 pb-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 font-sans">Team Members</h1>
-          <p className="mt-1.5 text-sm text-gray-500">Manage user access permissions and company roles.</p>
-        </div>
-        <div>
-          <button
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Team Members"
+        description="Manage user access permissions and company roles."
+        action={
+          <Button
             onClick={() => {
-              setShowAddForm(!showAddForm);
+              setShowAddForm(true);
               setError("");
               setSuccess("");
             }}
-            className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 shadow-sm"
           >
-            {showAddForm ? "Cancel Add" : "Add Member"}
-          </button>
-        </div>
-      </div>
+            <PlusIcon />
+            Add Member
+          </Button>
+        }
+      />
 
       {success && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 shadow-sm">
+        <div className="mb-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-700 dark:text-emerald-400">
           {success}
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800 shadow-sm">
+        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      {/* Add Member Drawer Form */}
-      {showAddForm && (
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900">Add New Member</h2>
-          <form onSubmit={handleAddMember} className="grid gap-6 sm:grid-cols-3 items-end">
+      <Card className="overflow-hidden p-0">
+        <div className="border-b px-6 py-5">
+          <h2 className="text-lg font-semibold text-foreground">Members</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {members.length} member{members.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+
+        {members.length === 0 ? (
+          <EmptyState
+            icon={UsersIcon}
+            title="No team members yet"
+            description="Add a member to give them access to this organization."
+          />
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Joined On</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedMembers.map((member) => (
+                  <TableRow key={member.id}>
+                    <TableCell className="font-medium text-foreground">
+                      {member.name}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {member.email}
+                    </TableCell>
+                    <TableCell>
+                      {member.role === "owner" ? (
+                        <Badge className={roleBadgeClass(member.role)}>
+                          Owner
+                        </Badge>
+                      ) : (
+                        <Select
+                          value={member.role}
+                          onValueChange={(value) =>
+                            handleRoleChange(member.id, value ?? member.role)
+                          }
+                        >
+                          <SelectTrigger
+                            disabled={processingId === member.id}
+                            size="sm"
+                            className={roleBadgeClass(member.role)}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="hr">HR Partner</SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="employee">Employee</SelectItem>
+                            <SelectItem value="member">Member</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(member.createdAt).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {member.role !== "owner" && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={processingId === member.id}
+                          onClick={() => setMemberToRemove(member)}
+                        >
+                          {processingId === member.id
+                            ? "Removing…"
+                            : "Remove"}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <DataTablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={members.length}
+              onPageChange={setPage}
+            />
+          </>
+        )}
+      </Card>
+
+      <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Member</DialogTitle>
+            <DialogDescription>
+              Invite a new user to join this organization.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddMember} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Email Address *</label>
-              <input
+              <Label className="mb-1.5">Email Address *</Label>
+              <Input
                 required
                 type="email"
                 placeholder="email@company.com"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
-            
+
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Full Name</label>
-              <input
-                type="text"
+              <Label className="mb-1.5">Full Name</Label>
+              <Input
                 placeholder="John Doe"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Role</label>
-              <div className="flex gap-3">
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="hr">HR Partner</option>
-                  <option value="manager">Manager</option>
-                  <option value="employee">Employee</option>
-                  <option value="member">Member</option>
-                </select>
-                <button
-                  disabled={savingMember}
-                  type="submit"
-                  className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-400 shadow-sm"
-                >
-                  Add
-                </button>
-              </div>
+              <Label className="mb-1.5">Role</Label>
+              <Select
+                value={newRole}
+                onValueChange={(value) => setNewRole(value ?? "employee")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="hr">HR Partner</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="member">Member</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </form>
-        </section>
-      )}
 
-      {/* Members List Table */}
-      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-sm text-gray-500">
-            <thead className="bg-gray-50 text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100">
-              <tr>
-                <th className="px-6 py-4">Name</th>
-                <th className="px-6 py-4">Email</th>
-                <th className="px-6 py-4">Role</th>
-                <th className="px-6 py-4">Joined On</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 font-sans">
-              {members.map((member) => (
-                <tr key={member.id} className="hover:bg-gray-50/50 transition">
-                  <td className="px-6 py-4 font-semibold text-gray-900">{member.name}</td>
-                  <td className="px-6 py-4">{member.email}</td>
-                  <td className="px-6 py-4">
-                    {member.role === "owner" ? (
-                      <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold shadow-sm bg-purple-50 text-purple-700 border-purple-200">
-                        Owner
-                      </span>
-                    ) : (
-                      <div className="relative inline-block w-40">
-                        <select
-                          disabled={processingId === member.id}
-                          value={member.role}
-                          onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                          className={[
-                            "w-full rounded-lg border px-2 py-1 text-xs font-semibold outline-none transition bg-white shadow-sm cursor-pointer",
-                            roleBadgeColor(member.role),
-                          ].join(" ")}
-                        >
-                          <option value="admin">Admin</option>
-                          <option value="hr">HR Partner</option>
-                          <option value="manager">Manager</option>
-                          <option value="employee">Employee</option>
-                          <option value="member">Member</option>
-                        </select>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {new Date(member.createdAt).toLocaleDateString(undefined, {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {member.role !== "owner" && (
-                      <button
-                        disabled={processingId === member.id}
-                        onClick={() => handleRemoveMember(member.id, member.email)}
-                        className="rounded-lg border border-red-200 hover:bg-red-50 text-xs font-semibold text-red-600 px-3 py-1.5 transition disabled:opacity-50"
-                      >
-                        {processingId === member.id ? "Removing..." : "Remove"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddForm(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingMember}>
+                {savingMember ? "Adding…" : "Add Member"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!memberToRemove}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null);
+        }}
+        title="Remove team member"
+        description={
+          memberToRemove
+            ? `Are you sure you want to remove ${memberToRemove.email} from the organization?`
+            : undefined
+        }
+        confirmLabel="Remove"
+        destructive
+        loading={processingId === memberToRemove?.id}
+        onConfirm={handleRemoveMember}
+      />
     </div>
   );
 }

@@ -9,7 +9,9 @@ test.describe("Login page", () => {
   test("renders the login form", async ({ page }) => {
     await page.goto("/login");
 
-    await expect(page.getByRole("heading", { name: "Login" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Welcome back" }),
+    ).toBeVisible();
     await expect(page.getByPlaceholder("Email")).toBeVisible();
     await expect(page.getByPlaceholder("Password")).toBeVisible();
     await expect(page.getByRole("button", { name: "Login" })).toBeVisible();
@@ -40,7 +42,7 @@ test.describe("Signup page", () => {
     await page.goto("/signup");
 
     await expect(
-      page.getByRole("heading", { name: "Create Account" }),
+      page.getByRole("heading", { name: "Create your account" }),
     ).toBeVisible();
     await expect(page.getByPlaceholder("Name")).toBeVisible();
     await expect(page.getByPlaceholder("Email")).toBeVisible();

@@ -1,21 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Users,
+  UserCheck,
+  CalendarCheck,
+  CalendarX,
+  ClipboardList,
+  UserPlus,
+  Building2,
+  Wallet,
+} from "lucide-react";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { StatCard } from "@/components/hr/stat-card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type ReportData = {
+  payrollVisible?: boolean;
   employees: {
     total: number;
     active: number;
+    newJoiners: number;
+  };
+  attendance: {
+    presentToday: number;
+    absentToday: number;
   };
   leaveRequests: {
     pending: number;
     approved: number;
     rejected: number;
   };
+  departments: {
+    total: number;
+  };
   payroll: {
     totalRecords: number;
+    latestPeriod: string | null;
+    latestPeriodNetTotal: string;
   };
 };
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
 
 export default function Home() {
   const [data, setData] = useState<ReportData | null>(null);
@@ -48,164 +80,166 @@ export default function Home() {
     loadDashboard();
   }, []);
 
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-gray-50 p-8">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-2xl font-bold text-gray-900">
-            HR Dashboard
-          </h1>
+  return (
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="HR Dashboard"
+        description="Overview of employees, attendance, leave and payroll."
+      />
 
-          <p className="mt-4 text-gray-500">
-            Loading dashboard...
-          </p>
+      {error && (
+        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
         </div>
-      </main>
-    );
-  }
+      )}
 
-  if (error) {
-    return (
-      <main className="min-h-screen bg-gray-50 p-8">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-2xl font-bold text-gray-900">
-            HR Dashboard
-          </h1>
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton key={index} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Total Employees"
+              value={data?.employees.total ?? 0}
+              icon={Users}
+            />
 
-          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
-            {error}
+            <StatCard
+              label="Active Employees"
+              value={data?.employees.active ?? 0}
+              hint={
+                data && data.employees.total > 0
+                  ? `${Math.round((data.employees.active / data.employees.total) * 100)}% of total`
+                  : undefined
+              }
+              tone="positive"
+              icon={UserCheck}
+            />
+
+            <StatCard
+              label="Present Today"
+              value={data?.attendance.presentToday ?? 0}
+              hint={
+                data && data.employees.active > 0
+                  ? `${Math.round((data.attendance.presentToday / data.employees.active) * 100)}% attendance`
+                  : undefined
+              }
+              tone="neutral"
+              icon={CalendarCheck}
+            />
+
+            <StatCard
+              label="Absent Today"
+              value={data?.attendance.absentToday ?? 0}
+              hint={
+                data && data.attendance.absentToday > 0
+                  ? "Needs review"
+                  : undefined
+              }
+              tone="warning"
+              icon={CalendarX}
+            />
+
+            <StatCard
+              label="Pending Leave Requests"
+              value={data?.leaveRequests.pending ?? 0}
+              hint={
+                data && data.leaveRequests.pending > 0
+                  ? "Awaiting approval"
+                  : undefined
+              }
+              tone="warning"
+              icon={ClipboardList}
+            />
+
+            <StatCard
+              label="New Joiners"
+              value={data?.employees.newJoiners ?? 0}
+              hint="Last 30 days"
+              tone="positive"
+              icon={UserPlus}
+            />
+
+            <StatCard
+              label="Departments"
+              value={data?.departments.total ?? 0}
+              icon={Building2}
+            />
+
+            {data?.payrollVisible !== false && (
+              <StatCard
+                label="Payroll Summary"
+                value={currencyFormatter.format(
+                  Number(data?.payroll.latestPeriodNetTotal ?? 0),
+                )}
+                hint={
+                  data?.payroll.latestPeriod
+                    ? `Net pay · ${data.payroll.latestPeriod}`
+                    : "No payroll run yet"
+                }
+                tone="neutral"
+                icon={Wallet}
+              />
+            )}
           </div>
-        </div>
-      </main>
-    );
-  }
 
-  return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            HR Dashboard
-          </h1>
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Leave Summary</CardTitle>
+              </CardHeader>
 
-          <p className="mt-2 text-gray-500">
-            Overview of employees, leave requests and payroll.
-          </p>
-        </div>
+              <CardContent className="space-y-4">
+                <SummaryRow
+                  label="Pending"
+                  value={data?.leaveRequests.pending ?? 0}
+                />
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <DashboardCard
-            title="Total Employees"
-            value={data?.employees.total ?? 0}
-          />
+                <SummaryRow
+                  label="Approved"
+                  value={data?.leaveRequests.approved ?? 0}
+                />
 
-          <DashboardCard
-            title="Active Employees"
-            value={data?.employees.active ?? 0}
-          />
+                <SummaryRow
+                  label="Rejected"
+                  value={data?.leaveRequests.rejected ?? 0}
+                />
+              </CardContent>
+            </Card>
 
-          <DashboardCard
-            title="Pending Leave Requests"
-            value={data?.leaveRequests.pending ?? 0}
-          />
+            {data?.payrollVisible !== false && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Payroll</CardTitle>
+                </CardHeader>
 
-          <DashboardCard
-            title="Approved Leaves"
-            value={data?.leaveRequests.approved ?? 0}
-          />
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Total payroll records
+                  </p>
 
-          <DashboardCard
-            title="Rejected Leaves"
-            value={data?.leaveRequests.rejected ?? 0}
-          />
-
-          <DashboardCard
-            title="Payroll Records"
-            value={data?.payroll.totalRecords ?? 0}
-          />
-        </div>
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
-          <section className="rounded-xl border bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Leave Summary
-            </h2>
-
-            <div className="mt-5 space-y-4">
-              <SummaryRow
-                label="Pending"
-                value={data?.leaveRequests.pending ?? 0}
-              />
-
-              <SummaryRow
-                label="Approved"
-                value={data?.leaveRequests.approved ?? 0}
-              />
-
-              <SummaryRow
-                label="Rejected"
-                value={data?.leaveRequests.rejected ?? 0}
-              />
-            </div>
-          </section>
-
-          <section className="rounded-xl border bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Payroll Summary
-            </h2>
-
-            <div className="mt-5">
-              <p className="text-sm text-gray-500">
-                Total payroll records
-              </p>
-
-              <p className="mt-2 text-3xl font-bold text-gray-900">
-                {data?.payroll.totalRecords ?? 0}
-              </p>
-            </div>
-          </section>
-        </div>
-      </div>
-    </main>
-  );
-}
-
-function DashboardCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-6 shadow-sm">
-      <p className="text-sm font-medium text-gray-500">
-        {title}
-      </p>
-
-      <p className="mt-3 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+                  <p className="mt-2 text-3xl font-bold text-foreground">
+                    {data?.payroll.totalRecords ?? 0}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
+function SummaryRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between border-b pb-3 last:border-0">
-      <span className="text-sm text-gray-600">
-        {label}
-      </span>
-
-      <span className="font-semibold text-gray-900">
-        {value}
-      </span>
+    <div className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
 }

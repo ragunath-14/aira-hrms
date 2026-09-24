@@ -1,8 +1,11 @@
+import { isUuid } from "@/lib/ids";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
 import { requireRole } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 import { ROLES, type Role } from "@/lib/permissions";
 
 type RouteContext = {
@@ -27,6 +30,9 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
     const body = await request.json();
     const role = body.role?.trim() as Role;
 
@@ -86,6 +92,22 @@ export async function PATCH(
       .where(eq(memberships.id, id))
       .returning();
 
+    await logAudit({
+      tenantId: authResult.tenant.id,
+      userId: authResult.user.id,
+      action: "role_changed",
+      entity: "membership",
+      entityId: updated.id,
+    });
+
+    await createNotification({
+      tenantId: authResult.tenant.id,
+      userId: updated.userId,
+      type: "role_changed",
+      title: "Your role was updated",
+      message: `Your role was changed from ${existing.role} to ${role}.`,
+    });
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error("Membership PATCH error:", error);
@@ -114,6 +136,9 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     // Find the membership to ensure it belongs to this tenant
     const [existing] = await db

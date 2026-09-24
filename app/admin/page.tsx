@@ -1,6 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Building2Icon } from "lucide-react";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type Tenant = {
   id: string;
@@ -11,10 +29,13 @@ type Tenant = {
   memberCount: number;
 };
 
+const PAGE_SIZE = 10;
+
 export default function AdminPage() {
   const [tenants, setTenants] = useState<Tenant[] | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     async function load() {
@@ -37,58 +58,84 @@ export default function AdminPage() {
     load();
   }, []);
 
-  return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-5xl">
-        <h1 className="text-2xl font-bold text-gray-900">Platform Admin</h1>
-        <p className="mt-2 text-gray-500">All tenants on this deployment.</p>
+  const pagedTenants = useMemo(
+    () => paginate(tenants ?? [], page, PAGE_SIZE),
+    [tenants, page],
+  );
 
-        {loading && (
-          <p className="mt-6 text-sm text-gray-500">Loading…</p>
-        )}
+  return (
+    <main className="min-h-screen bg-muted/30 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-5xl">
+        <PageHeader
+          title="Platform Admin"
+          description="All tenants on this deployment."
+        />
 
         {error && !loading && (
-          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
             {error}
           </div>
         )}
 
-        {tenants && (
-          <div className="mt-6 overflow-hidden rounded-xl border bg-white shadow-sm">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                  <th className="px-6 py-4 font-medium">Tenant</th>
-                  <th className="px-6 py-4 font-medium">Slug</th>
-                  <th className="px-6 py-4 font-medium">Email</th>
-                  <th className="px-6 py-4 font-medium">Members</th>
-                  <th className="px-6 py-4 font-medium">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((tenant) => (
-                  <tr key={tenant.id} className="border-b last:border-0">
-                    <td className="px-6 py-4 font-medium text-gray-900">
-                      {tenant.name}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {tenant.slug}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {tenant.email ?? "—"}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {tenant.memberCount}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(tenant.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <Card className="overflow-hidden p-0">
+          {loading ? (
+            <div className="space-y-2 p-6">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : !tenants || tenants.length === 0 ? (
+            !error && (
+              <EmptyState
+                icon={Building2Icon}
+                title="No tenants found"
+                description="No tenants have been created on this deployment yet."
+              />
+            )
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Slug</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Members</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedTenants.map((tenant) => (
+                    <TableRow key={tenant.id}>
+                      <TableCell className="font-medium text-foreground">
+                        {tenant.name}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {tenant.slug}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {tenant.email ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {tenant.memberCount}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {new Date(tenant.createdAt).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <DataTablePagination
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={tenants.length}
+                onPageChange={setPage}
+              />
+            </>
+          )}
+        </Card>
       </div>
     </main>
   );

@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { and, eq } from "drizzle-orm";
 import {
   getCurrentTenant,
@@ -54,6 +55,13 @@ if (!auth.authorized) {
     const employeeId =
       searchParams.get("employeeId");
 
+    if (employeeId && !isUuid(employeeId)) {
+      return Response.json(
+        { error: "Invalid employeeId" },
+        { status: 400 },
+      );
+    }
+
     const yearParam =
       searchParams.get("year");
 
@@ -72,9 +80,12 @@ if (!auth.authorized) {
       auth.role,
     );
 
-    let targetEmployeeId: string;
+    let targetEmployeeId: string | null = null;
 
-    if (employeeId && canViewOthers) {
+    if (!employeeId && canViewOthers) {
+      // HR/manager/owner fetching the whole tenant's balances in one call.
+      targetEmployeeId = null;
+    } else if (employeeId && canViewOthers) {
       const [employee] = await db
         .select({
           id: employees.id,
@@ -160,11 +171,10 @@ if (!auth.authorized) {
             leaveBalances.tenantId,
             authResult.tenant.id,
           ),
-          eq(
-            leaveBalances.employeeId,
-            targetEmployeeId,
-          ),
           eq(leaveBalances.year, year),
+          ...(targetEmployeeId
+            ? [eq(leaveBalances.employeeId, targetEmployeeId)]
+            : []),
         ),
       );
 

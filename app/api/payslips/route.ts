@@ -7,18 +7,9 @@ import {
   payrollRecords,
   payslips,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
-
-    if (!context) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
     const auth = await requireRole(request, [
       "owner",
       "admin",
@@ -38,7 +29,7 @@ export async function GET(request: Request) {
       .where(
         eq(
           payslips.tenantId,
-          context.tenant.id,
+          auth.tenant.id,
         ),
       );
 
@@ -55,14 +46,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
-
-    if (!context) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
     const auth = await requireRole(request, [
       "owner",
       "admin",
@@ -101,21 +84,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const [employee] = await db
-      .select({
-        id: employees.id,
-      })
-      .from(employees)
-      .where(
-        and(
-          eq(employees.id, employeeId),
-          eq(
-            employees.tenantId,
-            context.tenant.id,
+    // Neither lookup depends on the other's result — run them together.
+    const [[employee], [payrollRecord]] = await Promise.all([
+      db
+        .select({
+          id: employees.id,
+        })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.id, employeeId),
+            eq(
+              employees.tenantId,
+              auth.tenant.id,
+            ),
           ),
-        ),
-      )
-      .limit(1);
+        )
+        .limit(1),
+      db
+        .select({
+          id: payrollRecords.id,
+          employeeId: payrollRecords.employeeId,
+        })
+        .from(payrollRecords)
+        .where(
+          and(
+            eq(
+              payrollRecords.id,
+              payrollRecordId,
+            ),
+            eq(
+              payrollRecords.tenantId,
+              auth.tenant.id,
+            ),
+          ),
+        )
+        .limit(1),
+    ]);
 
     if (!employee) {
       return NextResponse.json(
@@ -123,26 +128,6 @@ export async function POST(request: Request) {
         { status: 404 },
       );
     }
-
-    const [payrollRecord] = await db
-      .select({
-        id: payrollRecords.id,
-        employeeId: payrollRecords.employeeId,
-      })
-      .from(payrollRecords)
-      .where(
-        and(
-          eq(
-            payrollRecords.id,
-            payrollRecordId,
-          ),
-          eq(
-            payrollRecords.tenantId,
-            context.tenant.id,
-          ),
-        ),
-      )
-      .limit(1);
 
     if (!payrollRecord) {
       return NextResponse.json(
@@ -166,7 +151,7 @@ export async function POST(request: Request) {
     const [payslip] = await db
       .insert(payslips)
       .values({
-        tenantId: context.tenant.id,
+        tenantId: auth.tenant.id,
         employeeId,
         payrollRecordId,
         payrollPeriod,

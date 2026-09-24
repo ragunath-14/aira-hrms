@@ -2,141 +2,106 @@ import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { notifications } from "@/db/schema/notifications";
-import { requirePermission } from "@/lib/authorization";
 import { requireRole } from "@/lib/authorization";
-export async function GET(request: Request) {
-  const authResult = await requirePermission(
-    request,
-    "users:read",
-  );
+import { isUuid } from "@/lib/ids";
 
-  if (!authResult.authorized) {
-    return Response.json(
-      { error: authResult.error },
-      { status: authResult.status },
-    );
-  }
-const auth = await requireRole(request, [
+// Notifications are personal: every row is scoped to the caller's own user
+// and tenant, so every role may read and acknowledge its own.
+const ALL_ROLES = [
   "owner",
   "admin",
   "hr",
   "manager",
   "employee",
-]);
+  "member",
+] as const;
 
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
-  const rows = await db
-    .select()
-    .from(notifications)
-    .where(
-      and(
-        eq(
-          notifications.tenantId,
-          authResult.tenant.id,
-        ),
-        eq(
-          notifications.userId,
-          authResult.user.id,
-        ),
-      ),
-    )
-    .orderBy(desc(notifications.createdAt));
-
-  return Response.json(rows);
-}
-export async function PATCH(request: Request) {
+export async function GET(request: Request) {
   try {
-    const authResult = await requirePermission(
-      request,
-      "users:read",
-    );
+    const auth = await requireRole(request, [...ALL_ROLES]);
 
-    if (!authResult.authorized) {
-      return Response.json(
-        { error: authResult.error },
-        { status: authResult.status },
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
 
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, auth.tenant.id),
+          eq(notifications.userId, auth.user.id),
+        ),
+      )
+      .orderBy(desc(notifications.createdAt));
+
+    return NextResponse.json(rows);
+  } catch (error) {
+    console.error("Notifications GET error:", error);
+
+    return NextResponse.json(
+      { error: "Failed to fetch notifications" },
+      { status: 500 },
+    );
+  }
 }
 
-    const body = await request.json();
+export async function PATCH(request: Request) {
+  try {
+    const auth = await requireRole(request, [...ALL_ROLES]);
 
-    const notificationId =
-      body.notificationId;
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status },
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+    const notificationId = body?.notificationId;
 
     if (!notificationId) {
-      return Response.json(
-        {
-          error:
-            "notificationId is required",
-        },
+      return NextResponse.json(
+        { error: "notificationId is required" },
+        { status: 400 },
+      );
+    }
+
+    if (!isUuid(notificationId)) {
+      return NextResponse.json(
+        { error: "Invalid notificationId" },
         { status: 400 },
       );
     }
 
     const [updated] = await db
       .update(notifications)
-      .set({
-        isRead: true,
-      })
+      .set({ isRead: true })
       .where(
         and(
-          eq(
-            notifications.id,
-            notificationId,
-          ),
-          eq(
-            notifications.tenantId,
-            authResult.tenant.id,
-          ),
-          eq(
-            notifications.userId,
-            authResult.user.id,
-          ),
+          eq(notifications.id, notificationId),
+          eq(notifications.tenantId, auth.tenant.id),
+          eq(notifications.userId, auth.user.id),
         ),
       )
       .returning();
 
     if (!updated) {
-      return Response.json(
-        {
-          error:
-            "Notification not found",
-        },
+      return NextResponse.json(
+        { error: "Notification not found" },
         { status: 404 },
       );
     }
 
-    return Response.json(updated);
+    return NextResponse.json(updated);
   } catch (error) {
-    console.error(
-      "Notification PATCH error:",
-      error,
-    );
+    console.error("Notification PATCH error:", error);
 
-    return Response.json(
-      {
-        error:
-          "Failed to update notification",
-      },
+    return NextResponse.json(
+      { error: "Failed to update notification" },
       { status: 500 },
     );
   }

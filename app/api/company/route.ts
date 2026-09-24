@@ -13,6 +13,7 @@ export async function GET(request: Request) {
       "owner",
       "admin",
       "hr",
+      "manager",
     ]);
 
     if (!auth.authorized) {

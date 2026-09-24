@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
     const month = searchParams.get("month");
 
-    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       return Response.json(
         {
           error: "month is required in YYYY-MM format",

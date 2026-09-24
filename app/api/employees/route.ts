@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { employees } from "@/db/schema";
@@ -32,6 +33,13 @@ export async function GET(request: Request) {
     const search = searchParams.get("search");
     const status = searchParams.get("status");
     const departmentId = searchParams.get("departmentId");
+
+    if (departmentId && !isUuid(departmentId)) {
+      return Response.json(
+        { error: "Invalid departmentId" },
+        { status: 400 },
+      );
+    }
     const designationId = searchParams.get("designationId");
     const locationId = searchParams.get("locationId");
 

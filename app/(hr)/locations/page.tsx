@@ -1,6 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { MapPinIcon, PlusIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Location = {
   id: string;
@@ -11,10 +42,13 @@ type Location = {
   country: string | null;
 };
 
+const PAGE_SIZE = 10;
+
 export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -34,17 +68,13 @@ export default function LocationsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Failed to fetch locations",
-        );
+        throw new Error(data.error || "Failed to fetch locations");
       }
 
       setLocations(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch locations",
+        err instanceof Error ? err.message : "Failed to fetch locations",
       );
     } finally {
       setLoading(false);
@@ -86,9 +116,7 @@ export default function LocationsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Failed to create location",
-        );
+        throw new Error(data.error || "Failed to create location");
       }
 
       setLocations((current) => [...current, data]);
@@ -99,260 +127,208 @@ export default function LocationsPage() {
       setState("");
       setCountry("");
       setShowForm(false);
+      toast.success("Location created");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create location",
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to create location";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   }
 
+  const pagedLocations = useMemo(
+    () => paginate(locations, page, PAGE_SIZE),
+    [locations, page],
+  );
+
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Locations
-            </h1>
-
-            <p className="mt-2 text-gray-500">
-              Manage company office and workplace locations.
-            </p>
-          </div>
-
-          <button
-            type="button"
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Locations"
+        description="Manage company office and workplace locations."
+        action={
+          <Button
             onClick={() => {
-              setShowForm((current) => !current);
+              setShowForm(true);
               setError("");
             }}
-            className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
           >
-            {showForm ? "Cancel" : "Add Location"}
-          </button>
+            <PlusIcon />
+            Add Location
+          </Button>
+        }
+      />
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <Card className="overflow-hidden p-0">
+        <div className="border-b px-6 py-5">
+          <h2 className="text-lg font-semibold text-foreground">
+            Location List
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {locations.length} location{locations.length === 1 ? "" : "s"}{" "}
+            found
+          </p>
         </div>
 
-        {showForm && (
-          <section className="mb-6 rounded-xl border bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Add Location
-            </h2>
-
-            <form
-              onSubmit={handleCreateLocation}
-              className="mt-5 space-y-4"
-            >
-              <div>
-                <label
-                  htmlFor="location-name"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
-                  Location Name
-                </label>
-
-                <input
-                  id="location-name"
-                  type="text"
-                  value={name}
-                  onChange={(event) =>
-                    setName(event.target.value)
-                  }
-                  placeholder="e.g. Chennai Office"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="location-address"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
-                  Address
-                </label>
-
-                <textarea
-                  id="location-address"
-                  value={address}
-                  onChange={(event) =>
-                    setAddress(event.target.value)
-                  }
-                  placeholder="Office address"
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="location-city"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
-                    City
-                  </label>
-
-                  <input
-                    id="location-city"
-                    type="text"
-                    value={city}
-                    onChange={(event) =>
-                      setCity(event.target.value)
-                    }
-                    placeholder="City"
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="location-state"
-                    className="mb-2 block text-sm font-medium text-gray-700"
-                  >
-                    State
-                  </label>
-
-                  <input
-                    id="location-state"
-                    type="text"
-                    value={state}
-                    onChange={(event) =>
-                      setState(event.target.value)
-                    }
-                    placeholder="State"
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="location-country"
-                  className="mb-2 block text-sm font-medium text-gray-700"
-                >
-                  Country
-                </label>
-
-                <input
-                  id="location-country"
-                  type="text"
-                  value={country}
-                  onChange={(event) =>
-                    setCountry(event.target.value)
-                  }
-                  placeholder="Country"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? "Creating..." : "Create Location"}
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
+        {loading ? (
+          <div className="space-y-2 p-6">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-12 w-full" />
+            ))}
           </div>
+        ) : locations.length === 0 ? (
+          <EmptyState
+            icon={MapPinIcon}
+            title="No locations found"
+            description="Add your first company location to get started."
+          />
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Address</TableHead>
+                  <TableHead>City</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead>Country</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedLocations.map((location) => (
+                  <TableRow key={location.id}>
+                    <TableCell className="font-medium text-foreground">
+                      {location.name}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {location.address || "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {location.city || "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {location.state || "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {location.country || "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <DataTablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={locations.length}
+              onPageChange={setPage}
+            />
+          </>
         )}
+      </Card>
 
-        <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-          <div className="border-b px-6 py-5">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Location List
-            </h2>
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Location</DialogTitle>
+            <DialogDescription>
+              Add a new office or workplace location.
+            </DialogDescription>
+          </DialogHeader>
 
-            <p className="mt-1 text-sm text-gray-500">
-              {locations.length} location
-              {locations.length === 1 ? "" : "s"} found
-            </p>
-          </div>
-
-          {loading ? (
-            <div className="p-8 text-center text-sm text-gray-500">
-              Loading locations...
+          <form onSubmit={handleCreateLocation} className="space-y-4">
+            <div>
+              <Label htmlFor="location-name" className="mb-1.5">
+                Location Name
+              </Label>
+              <Input
+                id="location-name"
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="e.g. Chennai Office"
+              />
             </div>
-          ) : locations.length === 0 ? (
-            <div className="p-8 text-center">
-              <h3 className="text-lg font-semibold text-gray-900">
-                No locations found
-              </h3>
 
-              <p className="mt-2 text-sm text-gray-500">
-                Add your first company location to get started.
-              </p>
+            <div>
+              <Label htmlFor="location-address" className="mb-1.5">
+                Address
+              </Label>
+              <Textarea
+                id="location-address"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                placeholder="Office address"
+                rows={3}
+              />
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b bg-gray-50 text-sm text-gray-500">
-                    <th className="px-6 py-4 font-medium">
-                      Location
-                    </th>
 
-                    <th className="px-6 py-4 font-medium">
-                      Address
-                    </th>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="location-city" className="mb-1.5">
+                  City
+                </Label>
+                <Input
+                  id="location-city"
+                  type="text"
+                  value={city}
+                  onChange={(event) => setCity(event.target.value)}
+                  placeholder="City"
+                />
+              </div>
 
-                    <th className="px-6 py-4 font-medium">
-                      City
-                    </th>
-
-                    <th className="px-6 py-4 font-medium">
-                      State
-                    </th>
-
-                    <th className="px-6 py-4 font-medium">
-                      Country
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {locations.map((location) => (
-                    <tr
-                      key={location.id}
-                      className="border-b last:border-0 hover:bg-gray-50"
-                    >
-                      <td className="px-6 py-4 font-medium text-gray-900">
-                        {location.name}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {location.address || "—"}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {location.city || "—"}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {location.state || "—"}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {location.country || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div>
+                <Label htmlFor="location-state" className="mb-1.5">
+                  State
+                </Label>
+                <Input
+                  id="location-state"
+                  type="text"
+                  value={state}
+                  onChange={(event) => setState(event.target.value)}
+                  placeholder="State"
+                />
+              </div>
             </div>
-          )}
-        </section>
-      </div>
-    </main>
+
+            <div>
+              <Label htmlFor="location-country" className="mb-1.5">
+                Country
+              </Label>
+              <Input
+                id="location-country"
+                type="text"
+                value={country}
+                onChange={(event) => setCountry(event.target.value)}
+                placeholder="Country"
+              />
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowForm(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Creating…" : "Create Location"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

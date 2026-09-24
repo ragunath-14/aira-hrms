@@ -1,19 +1,46 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Building2,
+  CalendarCheck,
+  CalendarX,
+  CheckCircle2,
+  ClipboardList,
+  IndianRupee,
+  UserCheck,
+  UserPlus,
+  Users,
+} from "lucide-react";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { StatCard } from "@/components/hr/stat-card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type ReportData = {
   employees: {
     total: number;
     active: number;
+    newJoiners: number;
+  };
+  attendance: {
+    presentToday: number;
+    absentToday: number;
   };
   leaveRequests: {
     pending: number;
     approved: number;
     rejected: number;
   };
+  departments: {
+    total: number;
+  };
+  payrollVisible?: boolean;
   payroll: {
     totalRecords: number;
+    latestPeriod: string | null;
+    latestPeriodNetTotal: string;
   };
 };
 
@@ -30,17 +57,13 @@ export default function ReportsPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(
-            data.error || "Failed to load report",
-          );
+          throw new Error(data.error || "Failed to load report");
         }
 
         setReport(data);
       } catch (error) {
         setError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load report",
+          error instanceof Error ? error.message : "Failed to load report",
         );
       } finally {
         setLoading(false);
@@ -51,109 +74,143 @@ export default function ReportsPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Reports
-          </h1>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Reports"
+        description="HRMS summary and workforce reports."
+      />
 
-          <p className="mt-2 text-gray-500">
-            HRMS summary and workforce reports.
-          </p>
+      {error && (
+        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
         </div>
+      )}
 
-        {loading && (
-          <p className="text-gray-500">
-            Loading reports...
-          </p>
-        )}
-
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
-            {error}
-          </div>
-        )}
-
-        {report && (
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 9 }).map((_, index) => (
+            <Skeleton key={index} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        report && (
           <>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <ReportCard
-                title="Total Employees"
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <StatCard
+                label="Total Employees"
                 value={report.employees.total}
+                icon={Users}
               />
 
-              <ReportCard
-                title="Active Employees"
+              <StatCard
+                label="Active Employees"
                 value={report.employees.active}
+                icon={UserCheck}
               />
 
-              <ReportCard
-                title="Payroll Records"
-                value={report.payroll.totalRecords}
+              <StatCard
+                label="New Joiners"
+                value={report.employees.newJoiners}
+                hint="Last 30 days"
+                icon={UserPlus}
               />
 
-              <ReportCard
-                title="Pending Leaves"
+              <StatCard
+                label="Departments"
+                value={report.departments.total}
+                icon={Building2}
+              />
+
+              <StatCard
+                label="Present Today"
+                value={report.attendance.presentToday}
+                icon={CalendarCheck}
+              />
+
+              <StatCard
+                label="Absent Today"
+                value={report.attendance.absentToday}
+                icon={CalendarX}
+              />
+
+              {report.payrollVisible !== false && (
+                <StatCard
+                  label="Payroll Records"
+                  value={report.payroll.totalRecords}
+                  icon={IndianRupee}
+                  hint={
+                    report.payroll.latestPeriod
+                      ? `Latest period · ${report.payroll.latestPeriod}`
+                      : "No payroll run yet"
+                  }
+                />
+              )}
+
+              <StatCard
+                label="Pending Leaves"
                 value={report.leaveRequests.pending}
+                icon={ClipboardList}
               />
 
-              <ReportCard
-                title="Approved Leaves"
+              <StatCard
+                label="Approved Leaves"
                 value={report.leaveRequests.approved}
-              />
-
-              <ReportCard
-                title="Rejected Leaves"
-                value={report.leaveRequests.rejected}
+                icon={CheckCircle2}
               />
             </div>
 
-            <section className="mt-8 rounded-xl border bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Leave Summary
-              </h2>
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Leave Summary</CardTitle>
+                </CardHeader>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <SummaryRow
-                  label="Pending"
-                  value={report.leaveRequests.pending}
-                />
+                <CardContent className="space-y-4">
+                  <SummaryRow
+                    label="Pending"
+                    value={report.leaveRequests.pending}
+                  />
 
-                <SummaryRow
-                  label="Approved"
-                  value={report.leaveRequests.approved}
-                />
+                  <SummaryRow
+                    label="Approved"
+                    value={report.leaveRequests.approved}
+                  />
 
-                <SummaryRow
-                  label="Rejected"
-                  value={report.leaveRequests.rejected}
-                />
-              </div>
-            </section>
+                  <SummaryRow
+                    label="Rejected"
+                    value={report.leaveRequests.rejected}
+                  />
+                </CardContent>
+              </Card>
+
+              {report.payrollVisible !== false && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Payroll</CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <SummaryRow
+                      label="Total records"
+                      value={report.payroll.totalRecords}
+                    />
+
+                    <SummaryRow
+                      label="Latest period"
+                      value={report.payroll.latestPeriod ?? "—"}
+                    />
+
+                    <SummaryRow
+                      label="Latest period net total"
+                      value={`₹${report.payroll.latestPeriodNetTotal}`}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </>
-        )}
-      </div>
-    </main>
-  );
-}
-
-function ReportCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-6 shadow-sm">
-      <p className="text-sm text-gray-500">
-        {title}
-      </p>
-
-      <p className="mt-3 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+        )
+      )}
     </div>
   );
 }
@@ -163,17 +220,12 @@ function SummaryRow({
   value,
 }: {
   label: string;
-  value: number;
+  value: number | string;
 }) {
   return (
-    <div className="rounded-lg border p-5">
-      <p className="text-sm text-gray-500">
-        {label}
-      </p>
-
-      <p className="mt-2 text-2xl font-bold text-gray-900">
-        {value}
-      </p>
+    <div className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
 }

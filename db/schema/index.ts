@@ -12,3 +12,4 @@ export * from "./performance";
 export * from "./performance-goals";
 export * from "./audit-logs";
 export * from "./employee-documents";
+export * from "./rbac";

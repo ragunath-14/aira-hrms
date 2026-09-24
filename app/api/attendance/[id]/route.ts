@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/ids";
 import { eq, and } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -27,6 +28,9 @@ export async function PATCH(
     const { tenant } = auth;
 
     const { id } = await params;
+    if (!isUuid(id)) {
+      return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
 
     const body = await request.json();
 

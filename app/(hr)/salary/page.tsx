@@ -1,6 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Landmark, Layers } from "lucide-react";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { StatCard } from "@/components/hr/stat-card";
+import { StatusBadge } from "@/components/hr/status-badge";
+import { EmptyState } from "@/components/hr/empty-state";
+import {
+  DataTablePagination,
+  paginate,
+} from "@/components/hr/data-table-pagination";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type SalaryStructure = {
   id: string;
@@ -18,34 +38,33 @@ type SalaryComponent = {
   amount: string;
 };
 
+const PAGE_SIZE = 10;
+
 export default function SalaryPage() {
   const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [components, setComponents] = useState<SalaryComponent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [structuresPage, setStructuresPage] = useState(1);
+  const [componentsPage, setComponentsPage] = useState(1);
 
   useEffect(() => {
     async function loadSalaryData() {
       try {
-        const [structureResponse, componentResponse] =
-          await Promise.all([
-            fetch("/api/salary-structures"),
-            fetch("/api/salary-components"),
-          ]);
+        const [structureResponse, componentResponse] = await Promise.all([
+          fetch("/api/salary-structures"),
+          fetch("/api/salary-components"),
+        ]);
 
         if (structureResponse.ok) {
           const data = await structureResponse.json();
 
-          setStructures(
-            Array.isArray(data) ? data : [],
-          );
+          setStructures(Array.isArray(data) ? data : []);
         }
 
         if (componentResponse.ok) {
           const data = await componentResponse.json();
 
-          setComponents(
-            Array.isArray(data) ? data : [],
-          );
+          setComponents(Array.isArray(data) ? data : []);
         }
       } finally {
         setLoading(false);
@@ -55,157 +74,144 @@ export default function SalaryPage() {
     loadSalaryData();
   }, []);
 
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-gray-50 p-8">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Salary Management
-          </h1>
-
-          <p className="mt-4 text-gray-500">
-            Loading salary information...
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Salary Management
-          </h1>
-
-          <p className="mt-2 text-gray-500">
-            Basic salary structures and salary components.
-          </p>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2">
-          <SummaryCard
-            title="Salary Structures"
-            value={structures.length}
-          />
-
-          <SummaryCard
-            title="Salary Components"
-            value={components.length}
-          />
-        </div>
-
-        <section className="mt-8 rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Basic Salary
-          </h2>
-
-          {structures.length === 0 ? (
-            <p className="mt-5 text-gray-500">
-              No salary structures found.
-            </p>
-          ) : (
-            <div className="mt-5 overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b text-sm text-gray-500">
-                    <th className="pb-3">Employee</th>
-                    <th className="pb-3">Basic Salary</th>
-                    <th className="pb-3">Effective From</th>
-                    <th className="pb-3">Effective To</th>
-                    <th className="pb-3">Status</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {structures.map((structure) => (
-                    <tr
-                      key={structure.id}
-                      className="border-b last:border-0"
-                    >
-                      <td className="py-4 text-sm">
-                        {structure.employeeId}
-                      </td>
-
-                      <td className="py-4 font-semibold">
-                        ₹{structure.basicSalary}
-                      </td>
-
-                      <td className="py-4">
-                        {structure.effectiveFrom}
-                      </td>
-
-                      <td className="py-4">
-                        {structure.effectiveTo || "Current"}
-                      </td>
-
-                      <td className="py-4">
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-sm">
-                          {structure.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className="mt-8 rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Salary Components
-          </h2>
-
-          {components.length === 0 ? (
-            <p className="mt-5 text-gray-500">
-              No salary components found.
-            </p>
-          ) : (
-            <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {components.map((component) => (
-                <div
-                  key={component.id}
-                  className="rounded-lg border p-5"
-                >
-                  <h3 className="font-semibold text-gray-900">
-                    {component.name}
-                  </h3>
-
-                  <p className="mt-2 text-sm text-gray-500">
-                    Type: {component.type}
-                  </p>
-
-                  <p className="mt-3 text-2xl font-bold text-gray-900">
-                    ₹{component.amount}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
+  const pagedStructures = useMemo(
+    () => paginate(structures, structuresPage, PAGE_SIZE),
+    [structures, structuresPage],
   );
-}
 
-function SummaryCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: number;
-}) {
+  const pagedComponents = useMemo(
+    () => paginate(components, componentsPage, PAGE_SIZE),
+    [components, componentsPage],
+  );
+
   return (
-    <div className="rounded-xl border bg-white p-6 shadow-sm">
-      <p className="text-sm text-gray-500">
-        {title}
-      </p>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Salary Management"
+        description="Basic salary structures and salary components."
+      />
 
-      <p className="mt-2 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <StatCard
+              label="Salary Structures"
+              value={structures.length}
+              icon={Landmark}
+            />
+
+            <StatCard
+              label="Salary Components"
+              value={components.length}
+              icon={Layers}
+            />
+          </div>
+
+          <Card className="mt-6 overflow-hidden p-0">
+            <CardHeader className="border-b px-6 py-5">
+              <CardTitle>Basic Salary</CardTitle>
+            </CardHeader>
+
+            {structures.length === 0 ? (
+              <EmptyState
+                icon={Landmark}
+                title="No salary structures found"
+                description="Salary structures will appear here once created."
+              />
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Basic Salary</TableHead>
+                      <TableHead>Effective From</TableHead>
+                      <TableHead>Effective To</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedStructures.map((structure) => (
+                      <TableRow key={structure.id}>
+                        <TableCell className="text-muted-foreground">
+                          {structure.employeeId}
+                        </TableCell>
+                        <TableCell className="font-semibold text-foreground">
+                          ₹{structure.basicSalary}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {structure.effectiveFrom}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {structure.effectiveTo || "Current"}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={structure.status} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <DataTablePagination
+                  page={structuresPage}
+                  pageSize={PAGE_SIZE}
+                  total={structures.length}
+                  onPageChange={setStructuresPage}
+                />
+              </>
+            )}
+          </Card>
+
+          <Card className="mt-6 overflow-hidden p-0">
+            <CardHeader className="border-b px-6 py-5">
+              <CardTitle>Salary Components</CardTitle>
+            </CardHeader>
+
+            {components.length === 0 ? (
+              <EmptyState
+                icon={Layers}
+                title="No salary components found"
+                description="Salary components will appear here once created."
+              />
+            ) : (
+              <>
+                <div className="grid gap-4 p-6 md:grid-cols-2 lg:grid-cols-3">
+                  {pagedComponents.map((component) => (
+                    <Card key={component.id}>
+                      <CardContent>
+                        <h3 className="font-semibold text-foreground">
+                          {component.name}
+                        </h3>
+
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Type: {component.type}
+                        </p>
+
+                        <p className="mt-3 text-2xl font-bold text-foreground">
+                          ₹{component.amount}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <DataTablePagination
+                  page={componentsPage}
+                  pageSize={PAGE_SIZE}
+                  total={components.length}
+                  onPageChange={setComponentsPage}
+                />
+              </>
+            )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }

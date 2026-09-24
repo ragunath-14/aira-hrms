@@ -1,0 +1,58 @@
+# Render Blueprint for AIRA HRMS.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repo. Render reads
+# this file, creates the service, and prompts for the secrets marked
+# `sync: false` below.
+#
+# The database is NOT created here. The app talks to Postgres through
+# @neondatabase/serverless (a WebSocket driver built for Neon), so keep using
+# your Neon project and paste its POOLED connection string as DATABASE_URL.
+
+services:
+  - type: web
+    name: aira-hrms
+    runtime: node
+    plan: starter # Pre-deploy commands (migrations) need a paid plan.
+
+    # Neon is hosted in AWS us-east-2 (Ohio); running in the same region keeps
+    # the per-query round trip low. Change both if your Neon region differs.
+    region: ohio
+
+    branch: main
+    autoDeployTrigger: commit
+
+    # drizzle-kit (migrations) and TypeScript/Tailwind (build) live in
+    # devDependencies, so install them explicitly.
+    buildCommand: npm ci --include=dev && npm run build
+
+    # Runs after a successful build and before the new version goes live; a
+    # failing migration aborts the deploy and keeps the old version serving.
+    preDeployCommand: npm run db:migrate
+
+    # Bind to all interfaces; Render supplies PORT.
+    startCommand: npm start -- -H 0.0.0.0
+
+    # Public page (excluded from the auth proxy), so it answers 200 without a
+    # session. Render only routes traffic to a version once this passes.
+    healthCheckPath: /login
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+
+      # Neon POOLED connection string (host contains "-pooler").
+      - key: DATABASE_URL
+        sync: false
+
+      # Signs Better Auth sessions/cookies. Generated once by Render and kept
+      # stable across deploys (changing it logs everyone out).
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+
+      # BETTER_AUTH_URL is intentionally not declared: the app falls back to
+      # RENDER_EXTERNAL_URL (the service's own onrender.com address, which
+      # Render injects). After attaching a custom domain, add
+      # BETTER_AUTH_URL=https://your-domain in the service's Environment tab.

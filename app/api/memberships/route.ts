@@ -10,13 +10,12 @@ import { membershipCreateSchema } from "@/lib/validations";
 
 export async function GET(request: Request) {
   try {
+    // The full team list (names, emails, roles) is only needed by user
+    // management, so it is limited to the same roles that can manage users.
     const authResult = await requireRole(request, [
       "owner",
       "admin",
       "hr",
-      "manager",
-      "employee",
-      "member",
     ]);
 
     if (!authResult.authorized) {

@@ -6,30 +6,21 @@ import {
   employees,
   performanceReviews,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+    ]);
 
-    if (!context) {
+    if (!auth.authorized) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-]);
-
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
 
     const reviews = await db
       .select()
@@ -37,7 +28,7 @@ if (!auth.authorized) {
       .where(
         eq(
           performanceReviews.tenantId,
-          context.tenant.id,
+          auth.tenant.id,
         ),
       );
 
@@ -57,26 +48,18 @@ if (!auth.authorized) {
 
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+    ]);
 
-    if (!context) {
+    if (!auth.authorized) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-]);
-
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
 
     const body = await request.json();
 
@@ -108,7 +91,7 @@ if (!auth.authorized) {
           eq(employees.id, employeeId),
           eq(
             employees.tenantId,
-            context.tenant.id,
+            auth.tenant.id,
           ),
         ),
       )
@@ -124,7 +107,7 @@ if (!auth.authorized) {
     const [review] = await db
       .insert(performanceReviews)
       .values({
-        tenantId: context.tenant.id,
+        tenantId: auth.tenant.id,
         employeeId,
         reviewPeriod,
         rating: rating ?? null,
@@ -151,26 +134,18 @@ if (!auth.authorized) {
 
 export async function PATCH(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+    ]);
 
-    if (!context) {
+    if (!auth.authorized) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-]);
-
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
     const body = await request.json();
 
     const {
@@ -200,7 +175,7 @@ if (!auth.authorized) {
           eq(performanceReviews.id, id),
           eq(
             performanceReviews.tenantId,
-            context.tenant.id,
+            auth.tenant.id,
           ),
         ),
       )

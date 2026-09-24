@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "./index";
 import { auth } from "../lib/auth";
@@ -8,8 +8,26 @@ import { tenants } from "./schema/tenants";
 import { memberships } from "./schema/memberships";
 import { departments, designations, locations } from "./schema/organization";
 import { employees } from "./schema/employees";
-import { leaveTypes, leaveBalances } from "./schema/leaves";
-import { salaryStructures, salaryComponents } from "./schema/payroll";
+import {
+  leaveTypes,
+  leaveBalances,
+  leaveRequests,
+} from "./schema/leaves";
+import {
+  salaryStructures,
+  salaryComponents,
+  payrollRuns,
+} from "./schema/payroll";
+import { attendance } from "./schema/attendance";
+import { performanceGoals } from "./schema/performance-goals";
+import { performanceReviews } from "./schema/performance";
+import { permissions, roles, rolePermissions } from "./schema/rbac";
+import {
+  PERMISSIONS,
+  ROLES,
+  getRolePermissions,
+} from "../lib/permissions";
+import { createPayrollRecordWithRun } from "../lib/payroll";
 
 const DEMO_PASSWORD = "Passw0rd!123";
 
@@ -58,6 +76,79 @@ const SUPER_ADMIN = {
   name: "Platform Admin",
   email: "superadmin@platform.test",
 };
+
+const ROLE_DISPLAY: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  hr: "HR Partner",
+  manager: "Manager",
+  employee: "Employee",
+  member: "Member",
+};
+
+const PERMISSION_DISPLAY: Record<string, { name: string; description: string }> = {
+  "tenant:read": { name: "Read Company Profile", description: "View company profile details and metadata" },
+  "tenant:manage": { name: "Manage Company Profile", description: "Update company profile information, settings, and logo" },
+  "users:read": { name: "Read Team Members", description: "View the list of team members and their roles" },
+  "users:manage": { name: "Manage Team Members", description: "Invite new users, update user roles, or remove users" },
+  "employees:read": { name: "Read Employees", description: "Browse and view employee directory profiles" },
+  "employees:manage": { name: "Manage Employees", description: "Add new employees, edit employee data, or offboard profiles" },
+  "attendance:read": { name: "Read Attendance", description: "View attendance logs and timesheets" },
+  "attendance:manage": { name: "Manage Attendance", description: "Record daily attendance, punch-in/out, and edit records" },
+  "leave:read": { name: "Read Leaves", description: "View leave requests and balance allocation" },
+  "leave:manage": { name: "Manage Leaves", description: "Submit requests, allocate leaves, and approve/reject requests" },
+  "payroll:read": { name: "Read Payroll", description: "View payroll salary structures and history slips" },
+  "payroll:manage": { name: "Manage Payroll", description: "Configure salary components and execute payroll runs" },
+  "performance:read": { name: "Read Performance", description: "View performance review assessments and objectives" },
+  "performance:manage": { name: "Manage Performance", description: "Configure performance goals, reviews, and evaluations" },
+};
+
+async function seedRbac() {
+  const [existingRole] = await db.select().from(roles).limit(1);
+
+  if (existingRole) {
+    console.log("Skipping roles/permissions — already seeded.");
+    return;
+  }
+
+  const createdPermissions = await db
+    .insert(permissions)
+    .values(
+      Object.values(PERMISSIONS).map((key) => ({
+        key,
+        name: PERMISSION_DISPLAY[key]?.name ?? key,
+        description: PERMISSION_DISPLAY[key]?.description ?? null,
+      })),
+    )
+    .returning();
+
+  const permissionIdByKey = new Map(
+    createdPermissions.map((p) => [p.key, p.id]),
+  );
+
+  for (const roleKey of Object.values(ROLES)) {
+    const [role] = await db
+      .insert(roles)
+      .values({
+        key: roleKey,
+        name: ROLE_DISPLAY[roleKey] ?? roleKey,
+      })
+      .returning();
+
+    const rolePerms = getRolePermissions(roleKey);
+
+    if (rolePerms.length > 0) {
+      await db.insert(rolePermissions).values(
+        rolePerms.map((permissionKey) => ({
+          roleId: role.id,
+          permissionId: permissionIdByKey.get(permissionKey)!,
+        })),
+      );
+    }
+  }
+
+  console.log("Seeded roles and permissions.");
+}
 
 async function ensureAuthUser(name: string, email: string) {
   const [existingAuthUser] = await db
@@ -108,7 +199,24 @@ async function seedTenant(seed: TenantSeed) {
     .limit(1);
 
   if (existingTenant) {
-    console.log(`Skipping "${seed.name}" — already seeded.`);
+    console.log(`Skipping "${seed.name}" core setup — already seeded.`);
+
+    const existingEmployees = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.tenantId, existingTenant.id));
+
+    const manager = existingEmployees.find((e) =>
+      e.employeeCode.endsWith("-001"),
+    );
+    const employee = existingEmployees.find((e) =>
+      e.employeeCode.endsWith("-002"),
+    );
+
+    if (manager && employee) {
+      await seedSampleActivity(existingTenant.id, manager, employee);
+    }
+
     return;
   }
 
@@ -210,9 +318,29 @@ async function seedTenant(seed: TenantSeed) {
   const createdLeaveTypes = await db
     .insert(leaveTypes)
     .values([
-      { tenantId: tenant.id, name: "Casual Leave", daysPerYear: 12 },
-      { tenantId: tenant.id, name: "Sick Leave", daysPerYear: 8 },
-      { tenantId: tenant.id, name: "Earned Leave", daysPerYear: 15 },
+      {
+        tenantId: tenant.id,
+        name: "Casual Leave",
+        daysPerYear: 12,
+        maxConsecutiveDays: 3,
+        minNoticeDays: 1,
+        rulesText: "Casual leave cannot be taken for more than 3 consecutive days.",
+      },
+      {
+        tenantId: tenant.id,
+        name: "Sick Leave",
+        daysPerYear: 8,
+        rulesText: "Medical certificate required for sick leave beyond 2 consecutive days.",
+      },
+      {
+        tenantId: tenant.id,
+        name: "Earned Leave",
+        daysPerYear: 15,
+        carryForwardLimit: 30,
+        minNoticeDays: 7,
+        encashmentAllowed: true,
+        rulesText: "Earned leave can be carried forward (up to 30 days) or encashed.",
+      },
     ])
     .returning();
 
@@ -254,7 +382,167 @@ async function seedTenant(seed: TenantSeed) {
     { tenantId: tenant.id, name: "Provident Fund", type: "deduction", amount: "3600" },
   ]);
 
+  await seedSampleActivity(tenant.id, managerEmployee, employeeEmployee);
+
   console.log(`Seeded "${seed.name}" (${seed.slug}).`);
+}
+
+async function seedSampleActivity(
+  tenantId: string,
+  managerEmployee: { id: string },
+  employeeEmployee: { id: string },
+) {
+  const [existingAttendance] = await db
+    .select()
+    .from(attendance)
+    .where(eq(attendance.tenantId, tenantId))
+    .limit(1);
+
+  if (!existingAttendance) {
+    const attendanceRows = [];
+    for (let daysAgo = 1; daysAgo <= 5; daysAgo++) {
+      const date = new Date();
+      date.setDate(date.getDate() - daysAgo);
+      const dateStr = date.toISOString().slice(0, 10);
+
+      for (const emp of [managerEmployee, employeeEmployee]) {
+        const checkIn = new Date(date);
+        checkIn.setHours(9, Math.floor(Math.random() * 20), 0, 0);
+        const checkOut = new Date(date);
+        checkOut.setHours(18, Math.floor(Math.random() * 20), 0, 0);
+
+        attendanceRows.push({
+          tenantId,
+          employeeId: emp.id,
+          attendanceDate: dateStr,
+          checkIn,
+          checkOut,
+          status: "present" as const,
+        });
+      }
+    }
+    await db.insert(attendance).values(attendanceRows);
+    console.log("  Seeded sample attendance.");
+  }
+
+  const [existingLeaveRequest] = await db
+    .select()
+    .from(leaveRequests)
+    .where(eq(leaveRequests.tenantId, tenantId))
+    .limit(1);
+
+  if (!existingLeaveRequest) {
+    const [leaveType] = await db
+      .select()
+      .from(leaveTypes)
+      .where(eq(leaveTypes.tenantId, tenantId))
+      .limit(1);
+
+    if (leaveType) {
+      await db.insert(leaveRequests).values([
+        {
+          tenantId,
+          employeeId: employeeEmployee.id,
+          leaveTypeId: leaveType.id,
+          startDate: "2026-11-10",
+          endDate: "2026-11-11",
+          totalDays: 2,
+          reason: "Personal errand",
+          status: "pending",
+          managerId: managerEmployee.id,
+        },
+        {
+          tenantId,
+          employeeId: employeeEmployee.id,
+          leaveTypeId: leaveType.id,
+          startDate: "2026-08-03",
+          endDate: "2026-08-03",
+          totalDays: 1,
+          reason: "Doctor visit",
+          status: "approved",
+          managerId: managerEmployee.id,
+          managerComment: "Approved, feel better soon.",
+        },
+      ]);
+      console.log("  Seeded sample leave requests.");
+    }
+  }
+
+  const [existingRun] = await db
+    .select()
+    .from(payrollRuns)
+    .where(eq(payrollRuns.tenantId, tenantId))
+    .limit(1);
+
+  if (!existingRun) {
+    const period = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+    await createPayrollRecordWithRun({
+      tenantId,
+      employeeId: managerEmployee.id,
+      payrollPeriod: period,
+      basicSalary: "60000",
+      totalAllowances: "10000",
+      totalDeductions: "3600",
+      netSalary: "66400",
+    });
+
+    await createPayrollRecordWithRun({
+      tenantId,
+      employeeId: employeeEmployee.id,
+      payrollPeriod: period,
+      basicSalary: "40000",
+      totalAllowances: "10000",
+      totalDeductions: "3600",
+      netSalary: "46400",
+    });
+    console.log("  Seeded sample payroll run.");
+  }
+
+  const [existingGoal] = await db
+    .select()
+    .from(performanceGoals)
+    .where(eq(performanceGoals.tenantId, tenantId))
+    .limit(1);
+
+  if (!existingGoal) {
+    await db.insert(performanceGoals).values([
+      {
+        tenantId,
+        employeeId: managerEmployee.id,
+        title: "Improve team sprint velocity",
+        description: "Reduce average sprint carry-over by 20%.",
+        status: "active",
+      },
+      {
+        tenantId,
+        employeeId: employeeEmployee.id,
+        title: "Complete onboarding certification",
+        description: "Finish the internal product certification track.",
+        status: "active",
+      },
+    ]);
+
+    await db.insert(performanceReviews).values([
+      {
+        tenantId,
+        employeeId: managerEmployee.id,
+        reviewPeriod: "2026-H1",
+        rating: 4,
+        comments: "Strong leadership and delivery this half.",
+        status: "completed",
+      },
+      {
+        tenantId,
+        employeeId: employeeEmployee.id,
+        reviewPeriod: "2026-H1",
+        rating: 3,
+        comments: "Solid contributor, ramping up well.",
+        status: "completed",
+      },
+    ]);
+    console.log("  Seeded sample performance goals and reviews.");
+  }
 }
 
 async function seedSuperAdmin() {
@@ -272,6 +560,8 @@ async function seedSuperAdmin() {
 }
 
 async function main() {
+  await seedRbac();
+
   for (const tenantSeed of TENANTS) {
     await seedTenant(tenantSeed);
   }

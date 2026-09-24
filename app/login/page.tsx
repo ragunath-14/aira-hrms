@@ -1,8 +1,17 @@
-
 "use client";
 
 import { useState } from "react";
-import { authClient } from "@/lib/auth-client";
+import { CheckIcon, LockIcon, ShieldCheckIcon, UsersIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const TRUST_POINTS = [
+  { icon: UsersIcon, text: "Role-based access controls" },
+  { icon: LockIcon, text: "Tenant-isolated workspaces" },
+  { icon: ShieldCheckIcon, text: "Every change logged to an audit trail" },
+];
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -92,74 +101,115 @@ export default function LoginPage() {
     }
   }
 
-  async function handleLogout() {
-    setMessage("Signing out...");
-
-    try {
-      const { error } = await authClient.signOut();
-
-      if (error) {
-        setMessage(error.message ?? "Logout failed");
-        return;
-      }
-
-      setMessage("Logout successful!");
-    } catch (error) {
-      console.error("Logout error:", error);
-      setMessage("Logout failed");
-    }
-  }
-
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-4">
-        <form
-          onSubmit={handleLogin}
-          className="space-y-4 rounded-lg border bg-white p-6 shadow-sm"
-        >
-          <h1 className="text-2xl font-bold">Login</h1>
+    <main className="flex min-h-screen">
+      {/* Left brand panel */}
+      <div className="relative hidden w-[42%] flex-col justify-between overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_20%_0%,var(--color-sidebar-primary),transparent)] opacity-20"
+        />
 
-          <input
-            className="w-full rounded border p-2"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+        <div className="relative flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
+            HR
+          </div>
+          <p className="text-base font-bold">AIRA HRMS</p>
+        </div>
 
-          <input
-            className="w-full rounded border p-2"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-
-          <button
-            type="submit"
-            className="w-full rounded bg-black p-2 text-white"
-          >
-            Login
-          </button>
-        </form>
-
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="w-full rounded border p-2"
-        >
-          Logout
-        </button>
-
-        {message && (
-          <p className="text-center text-sm text-gray-600">
-            {message}
+        <div className="relative max-w-sm space-y-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+            The operating system for your people
           </p>
-        )}
+          <h2 className="text-3xl font-bold leading-tight text-sidebar-foreground">
+            Clarity for every person, process and payroll.
+          </h2>
+          <p className="text-sm text-sidebar-foreground/60">
+            A secure, tenant-isolated workspace for HR teams and employees
+            to move work forward with confidence.
+          </p>
+
+          <ul className="space-y-2.5 pt-2">
+            {TRUST_POINTS.map(({ icon: Icon, text }) => (
+              <li
+                key={text}
+                className="flex items-center gap-2.5 text-sm text-sidebar-foreground/75"
+              >
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-sidebar-accent">
+                  <CheckIcon className="size-3 text-sidebar-primary" />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="relative text-xs text-sidebar-foreground/35">
+          © 2026 AIRA HRMS · Security · Privacy · Status
+        </p>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex flex-1 items-center justify-center bg-background p-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="flex flex-col items-center gap-2 text-center lg:hidden">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+              HR
+            </div>
+            <p className="text-lg font-bold text-foreground">AIRA HRMS</p>
+          </div>
+
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Welcome back
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sign in to your AIRA HRMS account.
+            </p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="login-email">Email</Label>
+              <Input
+                id="login-email"
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="login-password">Password</Label>
+              <Input
+                id="login-password"
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <Button type="submit" className="w-full">
+              Login
+            </Button>
+          </form>
+
+          {message && (
+            <p className="text-center text-sm text-muted-foreground">
+              {message}
+            </p>
+          )}
+
+          <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
+            <LockIcon className="size-3" />
+            Protected by tenant-isolated authentication
+          </p>
+        </div>
       </div>
     </main>
   );
 }
-

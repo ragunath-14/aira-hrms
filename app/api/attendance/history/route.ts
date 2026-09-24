@@ -3,35 +3,26 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
-import { getCurrentTenant } from "@/lib/authorization";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/authorization";
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await requireRole(request, [
+      "owner",
+      "admin",
+      "hr",
+      "manager",
+      "employee",
+    ]);
 
-    if (!context) {
-      return Response.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status },
       );
     }
-    const auth = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
 
-if (!auth.authorized) {
-  return NextResponse.json(
-    { error: auth.error },
-    { status: auth.status },
-  );
-}
-
-    const { tenant, user } = context;
+    const { tenant, user } = auth;
 
     const [employee] = await db
       .select()

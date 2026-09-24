@@ -135,6 +135,21 @@ export async function POST(request: Request) {
       );
     }
 
+    const carryForwardLimit =
+      body.carryForwardLimit === undefined || body.carryForwardLimit === null
+        ? null
+        : Number(body.carryForwardLimit);
+
+    const maxConsecutiveDays =
+      body.maxConsecutiveDays === undefined || body.maxConsecutiveDays === null
+        ? null
+        : Number(body.maxConsecutiveDays);
+
+    const minNoticeDays =
+      body.minNoticeDays === undefined || body.minNoticeDays === null
+        ? null
+        : Number(body.minNoticeDays);
+
     const [created] = await db
       .insert(leaveTypes)
       .values({
@@ -143,6 +158,11 @@ export async function POST(request: Request) {
         description: body.description?.trim() || null,
         daysPerYear,
         isActive: "true",
+        carryForwardLimit,
+        maxConsecutiveDays,
+        minNoticeDays,
+        encashmentAllowed: Boolean(body.encashmentAllowed),
+        rulesText: body.rulesText?.trim() || null,
       })
       .returning();
 

@@ -1,6 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { CheckIcon, LockIcon, ShieldCheckIcon, UsersIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const TRUST_POINTS = [
+  { icon: UsersIcon, text: "Role-based access controls" },
+  { icon: LockIcon, text: "Tenant-isolated workspaces" },
+  { icon: ShieldCheckIcon, text: "Every change logged to an audit trail" },
+];
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -73,48 +84,120 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <form
-        onSubmit={handleSignup}
-        className="w-full max-w-md space-y-4 rounded-lg border p-6"
-      >
-        <h1 className="text-2xl font-bold">Create Account</h1>
-
-        <input
-          className="w-full rounded border p-2"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
+    <main className="flex min-h-screen">
+      {/* Left brand panel */}
+      <div className="relative hidden w-[42%] flex-col justify-between overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_20%_0%,var(--color-sidebar-primary),transparent)] opacity-20"
         />
 
-        <input
-          className="w-full rounded border p-2"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
+        <div className="relative flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
+            HR
+          </div>
+          <p className="text-base font-bold">AIRA HRMS</p>
+        </div>
 
-        <input
-          className="w-full rounded border p-2"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="relative max-w-sm space-y-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+            The operating system for your people
+          </p>
+          <h2 className="text-3xl font-bold leading-tight text-sidebar-foreground">
+            Clarity for every person, process and payroll.
+          </h2>
+          <p className="text-sm text-sidebar-foreground/60">
+            Set up a secure, tenant-isolated workspace for your company in
+            minutes.
+          </p>
 
-        <button
-          type="submit"
-          className="w-full rounded bg-black p-2 text-white"
-        >
-          Sign Up
-        </button>
+          <ul className="space-y-2.5 pt-2">
+            {TRUST_POINTS.map(({ icon: Icon, text }) => (
+              <li
+                key={text}
+                className="flex items-center gap-2.5 text-sm text-sidebar-foreground/75"
+              >
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-sidebar-accent">
+                  <CheckIcon className="size-3 text-sidebar-primary" />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
 
-        {message && <p>{message}</p>}
-      </form>
+        <p className="relative text-xs text-sidebar-foreground/35">
+          © 2026 AIRA HRMS · Security · Privacy · Status
+        </p>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex flex-1 items-center justify-center bg-background p-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="flex flex-col items-center gap-2 text-center lg:hidden">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+              HR
+            </div>
+            <p className="text-lg font-bold text-foreground">AIRA HRMS</p>
+          </div>
+
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Create your account
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Set up your company workspace on AIRA HRMS.
+            </p>
+          </div>
+
+          <form onSubmit={handleSignup} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="signup-name">Name</Label>
+              <Input
+                id="signup-name"
+                placeholder="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="signup-email">Email</Label>
+              <Input
+                id="signup-email"
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="signup-password">Password</Label>
+              <Input
+                id="signup-password"
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <Button type="submit" className="w-full">
+              Sign Up
+            </Button>
+          </form>
+
+          {message && (
+            <p className="text-center text-sm text-muted-foreground">
+              {message}
+            </p>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

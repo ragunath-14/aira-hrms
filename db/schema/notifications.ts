@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   uuid,
+  index,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -35,4 +36,7 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at")
     .notNull()
     .defaultNow(),
-});
+}, (table) => [
+  index("notifications_tenant_id_idx").on(table.tenantId),
+  index("notifications_user_id_idx").on(table.userId),
+]);

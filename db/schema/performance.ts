@@ -4,6 +4,7 @@ import {
   text,
   integer,
   timestamp,
+  index,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -46,4 +47,8 @@ export const performanceReviews = pgTable(
       .defaultNow()
       .notNull(),
   },
+  (table) => [
+    index("performance_reviews_tenant_id_idx").on(table.tenantId),
+    index("performance_reviews_employee_id_idx").on(table.employeeId),
+  ],
 );

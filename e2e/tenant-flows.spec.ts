@@ -236,5 +236,85 @@ test.describe("Broken access control (confidentiality + IDOR)", () => {
       data: { id: created.id, title: "HACKED", status: "completed" },
     });
     expect(editOther.status()).toBe(403);
+
+    // GET must also be scoped to the caller's own goals for the
+    // "employee" role — it should never return a colleague's goal.
+    const ownGoals = await (
+      await page.request.get("/api/performance/goals")
+    ).json();
+    expect(
+      ownGoals.some((goal: { id: string }) => goal.id === created.id),
+    ).toBe(false);
+  });
+});
+
+test.describe("API hardening (found by API smoke testing)", () => {
+  test("employee cannot read tenant-wide reports or the team member list", async ({
+    page,
+  }) => {
+    await loginAs(page, "employee@acme-corp.test");
+
+    // /api/reports exposes headcount, leave counts and payroll totals.
+    expect((await page.request.get("/api/reports")).status()).toBe(403);
+    // /api/memberships lists every colleague's name, email and role.
+    expect((await page.request.get("/api/memberships")).status()).toBe(403);
+  });
+
+  test("manager gets the dashboard report without payroll figures", async ({
+    page,
+  }) => {
+    await loginAs(page, "manager@acme-corp.test");
+
+    const res = await page.request.get("/api/reports");
+    expect(res.status()).toBe(200);
+    const report = await res.json();
+    expect(report.payrollVisible).toBe(false);
+    expect(report.payroll.latestPeriodNetTotal).toBe("0");
+  });
+
+  test("HR still gets payroll figures in the report", async ({ page }) => {
+    await loginAs(page, "hr@acme-corp.test");
+
+    const report = await (await page.request.get("/api/reports")).json();
+    expect(report.payrollVisible).toBe(true);
+  });
+
+  test("every role can load their own notifications", async ({ page }) => {
+    for (const email of [
+      "owner@acme-corp.test",
+      "manager@acme-corp.test",
+      "employee@acme-corp.test",
+    ]) {
+      await loginAs(page, email);
+      expect(
+        (await page.request.get("/api/notifications")).status(),
+        `${email} should be able to read notifications`,
+      ).toBe(200);
+    }
+  });
+
+  test("malformed ids and query params get a 400, never a 500", async ({
+    page,
+  }) => {
+    await loginAs(page, "owner@acme-corp.test");
+
+    const cases: Array<[string, string]> = [
+      ["GET", "/api/employees/not-a-uuid"],
+      ["PATCH", "/api/leave-requests/not-a-uuid"],
+      ["DELETE", "/api/departments/not-a-uuid"],
+      ["GET", "/api/attendance?employeeId=x"],
+      ["GET", "/api/attendance?month=garbage"],
+      ["GET", "/api/attendance/summary?month=2026-13"],
+      ["GET", "/api/leave-requests?employeeId=x"],
+      ["GET", "/api/employees?departmentId=x"],
+    ];
+
+    for (const [method, path] of cases) {
+      const res = await page.request.fetch(path, {
+        method,
+        data: method === "PATCH" ? { action: "approve" } : undefined,
+      });
+      expect(res.status(), `${method} ${path}`).toBe(400);
+    }
   });
 });

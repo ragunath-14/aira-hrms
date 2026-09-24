@@ -3,23 +3,13 @@ import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
-import {
-  getCurrentTenant,
-  requireRole,
-} from "@/lib/authorization";
+import { requireRole } from "@/lib/authorization";
+import { isUuid } from "@/lib/ids";
 
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
-
-    if (!context) {
-      return Response.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
     const auth = await requireRole(request, [
       "owner",
       "admin",
@@ -34,7 +24,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const { tenant } = context;
+    const { tenant } = auth;
 
     const { searchParams } = new URL(request.url);
 
@@ -42,6 +32,30 @@ export async function GET(request: Request) {
     const departmentId = searchParams.get("departmentId");
     const date = searchParams.get("date");
     const month = searchParams.get("month");
+
+    if (
+      (employeeId && !isUuid(employeeId)) ||
+      (departmentId && !isUuid(departmentId))
+    ) {
+      return Response.json(
+        { error: "Invalid employeeId or departmentId" },
+        { status: 400 },
+      );
+    }
+
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return Response.json(
+        { error: "date must be in YYYY-MM-DD format" },
+        { status: 400 },
+      );
+    }
+
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return Response.json(
+        { error: "month must be in YYYY-MM format" },
+        { status: 400 },
+      );
+    }
 
     const conditions = [
       eq(attendance.tenantId, tenant.id),

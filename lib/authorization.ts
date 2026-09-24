@@ -39,52 +39,40 @@ export async function getCurrentTenant(request: Request) {
     return null;
   }
 
-  const [user] = await db
-    .select()
+  // A single joined query instead of three sequential round-trips
+  // (user -> membership -> tenant) — each round-trip adds real latency,
+  // so collapsing them matters a lot under network latency to the DB.
+  const [row] = await db
+    .select({
+      user: users,
+      membershipId: memberships.id,
+      membershipTenantId: memberships.tenantId,
+      membershipRole: memberships.role,
+      tenant: tenants,
+    })
     .from(users)
+    .innerJoin(memberships, eq(memberships.userId, users.id))
+    .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
     .where(eq(users.email, session.user.email))
     .limit(1);
 
-  if (!user) {
-    return null;
-  }
-
-  const [membership] = await db
-    .select({
-      membershipId: memberships.id,
-      tenantId: memberships.tenantId,
-      role: memberships.role,
-    })
-    .from(memberships)
-    .where(eq(memberships.userId, user.id))
-    .limit(1);
-
-  if (!membership) {
+  if (!row) {
     return null;
   }
 
   const validRoles = Object.values(ROLES);
 
-  if (!validRoles.includes(membership.role as Role)) {
-    return null;
-  }
-
-  const [tenant] = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.id, membership.tenantId))
-    .limit(1);
-
-  if (!tenant) {
+  if (!validRoles.includes(row.membershipRole as Role)) {
     return null;
   }
 
   return {
-    user,
-    tenant,
+    user: row.user,
+    tenant: row.tenant,
     membership: {
-      ...membership,
-      role: membership.role as Role,
+      membershipId: row.membershipId,
+      tenantId: row.membershipTenantId,
+      role: row.membershipRole as Role,
     },
   };
 }

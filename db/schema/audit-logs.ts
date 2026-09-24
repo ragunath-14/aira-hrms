@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   timestamp,
+  index,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -31,4 +32,7 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at")
     .defaultNow()
     .notNull(),
-});
+}, (table) => [
+  index("audit_logs_tenant_id_idx").on(table.tenantId),
+  index("audit_logs_user_id_idx").on(table.userId),
+]);

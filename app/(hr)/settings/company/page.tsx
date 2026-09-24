@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/hr/page-header";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Company = {
   name: string;
@@ -90,8 +98,12 @@ export default function CompanySettingsPage() {
       }
 
       setSuccess("Company settings updated successfully!");
+      toast.success("Company settings updated");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update settings");
+      const message =
+        err instanceof Error ? err.message : "Failed to update settings";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -99,195 +111,162 @@ export default function CompanySettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-          <p className="text-sm font-medium text-gray-500">Loading company settings...</p>
-        </div>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <PageHeader
+          title="Company Settings"
+          description="Manage your organization's public profile details."
+        />
+        <Card>
+          <CardContent className="grid gap-6 pt-6 sm:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-10 w-full" />
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 font-sans">Company Settings</h1>
-          <p className="mt-1.5 text-sm text-gray-500">Manage your organization&apos;s public profile details.</p>
-        </div>
-        <Link
-          href="/organization"
-          className="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-        >
-          View Profile
-        </Link>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        title="Company Settings"
+        description="Manage your organization's public profile details."
+        action={
+          <Button variant="outline" render={<Link href="/organization" />}>
+            View Profile
+          </Button>
+        }
+      />
 
       {success && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 shadow-sm">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-700 dark:text-emerald-400">
           {success}
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800 shadow-sm">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
           {error}
         </div>
       )}
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Profile Card */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900">General Profile</h2>
-          
-          <div className="grid gap-6 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>General Profile</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-6 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name *</label>
-              <input
+              <Label className="mb-1.5">Company Name *</Label>
+              <Input
                 required
-                type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Acme Corp"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Company Slug (Read-only)</label>
-              <input
-                disabled
-                type="text"
-                value={form.slug}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 outline-none cursor-not-allowed"
-              />
+              <Label className="mb-1.5">Company Slug (Read-only)</Label>
+              <Input disabled value={form.slug} />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Logo URL</label>
-              <input
-                type="text"
+              <Label className="mb-1.5">Logo URL</Label>
+              <Input
                 value={form.logo}
                 onChange={(e) => setForm({ ...form, logo: e.target.value })}
                 placeholder="e.g. https://example.com/logo.png"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Website</label>
-              <input
-                type="text"
+              <Label className="mb-1.5">Website</Label>
+              <Input
                 value={form.website}
                 onChange={(e) => setForm({ ...form, website: e.target.value })}
                 placeholder="e.g. www.acme.com"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* Contact details */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900">Contact Details</h2>
-
-          <div className="grid gap-6 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Contact Details</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-6 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-              <input
+              <Label className="mb-1.5">Email Address</Label>
+              <Input
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="e.g. contact@acme.com"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Number</label>
-              <input
-                type="text"
+              <Label className="mb-1.5">Phone Number</Label>
+              <Input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 placeholder="e.g. +1 555-0199"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* Location details */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900">Headquarters Address</h2>
-
-          <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Headquarters Address</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Street Address</label>
-              <input
-                type="text"
+              <Label className="mb-1.5">Street Address</Label>
+              <Input
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
                 placeholder="e.g. 123 Business Rd"
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
             <div className="grid gap-6 sm:grid-cols-3">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">City</label>
-                <input
-                  type="text"
+                <Label className="mb-1.5">City</Label>
+                <Input
                   value={form.city}
                   onChange={(e) => setForm({ ...form, city: e.target.value })}
                   placeholder="City"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">State / Province</label>
-                <input
-                  type="text"
+                <Label className="mb-1.5">State / Province</Label>
+                <Input
                   value={form.state}
                   onChange={(e) => setForm({ ...form, state: e.target.value })}
                   placeholder="State"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Country</label>
-                <input
-                  type="text"
+                <Label className="mb-1.5">Country</Label>
+                <Input
                   value={form.country}
                   onChange={(e) => setForm({ ...form, country: e.target.value })}
                   placeholder="Country"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* Form Actions */}
         <div className="flex justify-end">
-          <button
-            disabled={saving}
-            type="submit"
-            className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed shadow-sm"
-          >
-            {saving ? (
-              <>
-                <svg className="mr-2 h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Saving Changes...
-              </>
-            ) : (
-              "Save Company Settings"
-            )}
-          </button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save Company Settings"}
+          </Button>
         </div>
       </form>
     </div>

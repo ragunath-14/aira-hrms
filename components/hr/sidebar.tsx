@@ -1,13 +1,34 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { ChevronsUpDownIcon, LockIcon, LogOutIcon } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
+  showUnreadDot?: boolean;
+  // When set, only these membership roles see the link.
+  roles?: string[];
+};
+
+type TenantContext = {
+  user: { name: string; email: string };
+  tenant: { name: string; slug: string };
+  membership: { role: string };
 };
 
 const mainItems: NavItem[] = [
@@ -104,6 +125,7 @@ const otherItems: NavItem[] = [
     label: "Notifications",
     href: "/notifications",
     icon: <BellIcon />,
+    showUnreadDot: true,
   },
 ];
 
@@ -128,6 +150,11 @@ const settingsItems: NavItem[] = [
     href: "/settings/system",
     icon: <PerformanceIcon />,
   },
+  {
+    label: "Audit Logs",
+    href: "/settings/audit-logs",
+    icon: <ReportIcon />,
+  },
 ];
 
 const workspaceItems: NavItem[] = [
@@ -139,159 +166,165 @@ const workspaceItems: NavItem[] = [
 ];
 
 
+const HR_ROLES = ["owner", "admin", "hr"];
+
+const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
+  { title: "Main", items: mainItems },
+  { title: "Organization", items: organizationItems },
+  { title: "Employees", items: employeeItems },
+  { title: "Attendance", items: attendanceItems },
+  { title: "Leave", items: leaveItems },
+  { title: "Payroll", items: payrollItems.map((i) => ({ ...i, roles: HR_ROLES })) },
+  { title: "Performance", items: performanceItems.map((i) => ({ ...i, roles: HR_ROLES })) },
+  { title: "Reports", items: reportItems },
+  { title: "Other", items: otherItems },
+  {
+    title: "Settings",
+    items: settingsItems.map((i) => ({
+      ...i,
+      roles: i.href === "/settings/audit-logs" ? ["owner", "admin"] : HR_ROLES,
+    })),
+  },
+  { title: "My Workspace", items: workspaceItems },
+];
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [ctx, setCtx] = useState<TenantContext | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/tenant")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.user && data?.tenant && data?.membership) {
+          setCtx(data);
+        }
+      })
+      .catch(() => {
+        /* silently ignore */
+      });
+
+    fetch("/api/notifications")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setUnreadCount(
+            data.filter((n: { isRead: boolean }) => !n.isRead).length,
+          );
+        }
+      })
+      .catch(() => {
+        /* silently ignore */
+      });
+  }, []);
 
   async function handleLogout() {
     await authClient.signOut();
     router.push("/login");
   }
 
+  const userInitial = (ctx?.user?.name ?? "?").charAt(0).toUpperCase();
+
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-gray-200 bg-white lg:flex lg:flex-col">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col">
       {/* Logo */}
-      <div className="flex h-16 items-center border-b border-gray-200 px-6">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
+      <div className="flex h-16 items-center border-b border-sidebar-border px-5">
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
             HR
           </div>
 
-          <div>
-            <p className="text-lg font-bold text-gray-900">
-              HRMS
-            </p>
+          <p className="text-base font-bold text-sidebar-foreground">
+            AIRA HRMS
+          </p>
+        </Link>
+      </div>
 
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
-              Human Resources
+      {/* Workspace switcher */}
+      <div className="px-3 pt-4">
+        <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/35">
+          Workspace
+        </p>
+        <div className="flex items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent/40 px-2.5 py-2">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-xs font-bold text-sidebar-accent-foreground">
+            {(ctx?.tenant?.name ?? "?").charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-sidebar-foreground">
+              {ctx?.tenant?.name ?? "Loading…"}
+            </p>
+            <p className="truncate text-[11px] text-sidebar-foreground/45">
+              {ctx?.tenant?.slug ? `${ctx.tenant.slug}.aira-hrms` : "Isolated workspace"}
             </p>
           </div>
-        </Link>
+          <ChevronsUpDownIcon className="size-3.5 shrink-0 text-sidebar-foreground/35" />
+        </div>
       </div>
 
       {/* Navigation */}
 <nav className="flex-1 overflow-y-auto px-3 py-5">
-  <NavSection title="Main">
-    {mainItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
+        {NAV_SECTIONS.map((section) => (
+          <NavSection
+            key={section.title}
+            title={section.title}
+            items={section.items}
+            pathname={pathname}
+            unreadCount={unreadCount}
+            role={ctx?.membership?.role}
+          />
+        ))}
+      </nav>
 
-  <NavSection title="Organization">
-    {organizationItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
+      {/* Bottom: user card */}
+      <div className="border-t border-sidebar-border p-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-sidebar-accent"
+              />
+            }
+          >
+            <Avatar size="sm">
+              <AvatarFallback className="bg-sidebar-accent font-semibold text-sidebar-accent-foreground">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-sidebar-foreground">
+                {ctx?.user?.name ?? "—"}
+              </p>
+              <p className="truncate text-xs capitalize text-sidebar-foreground/45">
+                {ctx?.membership?.role ?? ""}
+              </p>
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="top" className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>
+                <p className="text-sm font-medium text-foreground">
+                  {ctx?.user?.name ?? "—"}
+                </p>
+                <p className="truncate text-xs font-normal text-muted-foreground">
+                  {ctx?.user?.email ?? ""}
+                </p>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={handleLogout}>
+              <LogOutIcon />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-  <NavSection title="Employees">
-    {employeeItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Attendance">
-    {attendanceItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Leave">
-    {leaveItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Payroll">
-    {payrollItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Performance">
-    {performanceItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Reports">
-    {reportItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Other">
-    {otherItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="Settings">
-    {settingsItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-
-  <NavSection title="My Workspace">
-    {workspaceItems.map((item) => (
-      <SidebarLink
-        key={item.href}
-        item={item}
-        active={isActive(pathname, item.href)}
-      />
-    ))}
-  </NavSection>
-</nav>
-
-      {/* Bottom */}
-      <div className="border-t border-gray-200 p-3">
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-600 transition hover:bg-gray-50 hover:text-gray-900"
-        >
-          <LogoutIcon />
-          <span>Sign out</span>
-        </button>
+        <p className="mt-2 flex items-center gap-1 px-2 text-[11px] text-sidebar-foreground/35">
+          <LockIcon className="size-3" />
+          Session secure
+        </p>
       </div>
     </aside>
   );
@@ -299,18 +332,43 @@ export default function Sidebar() {
 
 function NavSection({
   title,
-  children,
+  items,
+  pathname,
+  unreadCount,
+  role,
 }: {
   title: string;
-  children: React.ReactNode;
+  items: NavItem[];
+  pathname: string;
+  unreadCount: number;
+  role: string | undefined;
 }) {
+  // Links a role cannot use (their API would answer 403) are hidden rather
+  // than shown. Until the role is known, restricted links stay hidden too.
+  const visible = items.filter(
+    (item) => !item.roles || (role !== undefined && item.roles.includes(role)),
+  );
+
+  if (visible.length === 0) {
+    return null;
+  }
+
   return (
-    <div className="mb-6">
-      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+    <div className="mb-4">
+      <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/35">
         {title}
       </p>
 
-      <div className="space-y-1">{children}</div>
+      <div className="space-y-0.5">
+        {visible.map((item) => (
+          <SidebarLink
+            key={item.href}
+            item={item}
+            active={isActive(pathname, item.href)}
+            unreadCount={unreadCount}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -318,29 +376,37 @@ function NavSection({
 function SidebarLink({
   item,
   active,
+  unreadCount,
 }: {
   item: NavItem;
   active: boolean;
+  unreadCount?: number;
 }) {
   return (
     <Link
       href={item.href}
       className={[
-        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
         active
-          ? "bg-blue-50 text-blue-700"
-          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
       ].join(" ")}
     >
       <span
         className={
-          active ? "text-blue-600" : "text-gray-400"
+          active
+            ? "text-sidebar-primary-foreground"
+            : "text-sidebar-foreground/40"
         }
       >
         {item.icon}
       </span>
 
-      <span>{item.label}</span>
+      <span className="flex-1">{item.label}</span>
+
+      {item.showUnreadDot && !!unreadCount && (
+        <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
+      )}
     </Link>
   );
 }
