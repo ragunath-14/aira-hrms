@@ -562,6 +562,12 @@ async function seedSuperAdmin() {
 async function main() {
   await seedRbac();
 
+  // `npm run db:seed:rbac` loads only the roles/permissions reference data
+  // (safe for production); the full seed also creates demo accounts.
+  if (process.argv.includes("--rbac-only")) {
+    return;
+  }
+
   for (const tenantSeed of TENANTS) {
     await seedTenant(tenantSeed);
   }

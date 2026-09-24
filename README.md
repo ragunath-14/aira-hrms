@@ -213,9 +213,14 @@ and environment variables).
    **New → Blueprint** and select the repo.
 2. When prompted, paste your Neon **pooled** connection string as
    `DATABASE_URL`. `BETTER_AUTH_SECRET` is generated for you.
-3. Deploy. On every deploy Render runs `npm run db:migrate` before the new
-   version goes live; a failed migration aborts the deploy.
-4. Optional: after attaching a custom domain, add
+3. Deploy. Before each new version goes live Render runs
+   `npm run db:migrate` (schema) and `npm run db:seed:rbac` (roles and
+   permissions reference rows only, idempotent, no demo accounts); a failure
+   in either aborts the deploy and the previous version keeps serving.
+4. Open the service URL and use **Sign up**: the first account creates a
+   company workspace and becomes its `owner`. Invite everyone else from
+   Settings → Users.
+5. Optional: after attaching a custom domain, add
    `BETTER_AUTH_URL=https://your-domain` in the service's Environment tab.
    Without it the app uses the service's `onrender.com` address
    (`RENDER_EXTERNAL_URL`).

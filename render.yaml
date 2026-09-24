@@ -27,8 +27,11 @@ services:
     buildCommand: npm ci --include=dev && npm run build
 
     # Runs after a successful build and before the new version goes live; a
-    # failing migration aborts the deploy and keeps the old version serving.
-    preDeployCommand: npm run db:migrate
+    # failure aborts the deploy and keeps the old version serving.
+    #   db:migrate      applies pending schema migrations
+    #   db:seed:rbac    loads the roles/permissions reference rows (idempotent;
+    #                   does NOT create demo accounts)
+    preDeployCommand: npm run db:migrate && npm run db:seed:rbac
 
     # Bind to all interfaces; Render supplies PORT.
     startCommand: npm start -- -H 0.0.0.0

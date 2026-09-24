@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx db/seed.ts",
+    "db:seed:rbac": "tsx db/seed.ts --rbac-only",
     "db:test": "tsx test-db.ts",
     "test:e2e": "playwright test"
   },
