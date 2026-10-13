@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth/client";
 import { PageHeader } from "@/components/layout/page-header";
+import { ChangePasswordDialog } from "@/components/shared/change-password-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
@@ -97,6 +98,7 @@ export default function AccessRequestsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [myPasswordOpen, setMyPasswordOpen] = useState(false);
   const [company, setCompany] = useState(EMPTY_COMPANY);
   const [pwTarget, setPwTarget] = useState<AccessRequest | null>(null);
   const [newPw, setNewPw] = useState("");
@@ -252,6 +254,9 @@ export default function AccessRequestsPage() {
             <>
               <Button onClick={() => setCreateOpen(true)}>
                 <PlusIcon /> Create company
+              </Button>
+              <Button variant="outline" onClick={() => setMyPasswordOpen(true)}>
+                <KeyRoundIcon /> Change my password
               </Button>
               <Button variant="outline" onClick={handleLogout}>
                 Sign out
@@ -432,6 +437,8 @@ export default function AccessRequestsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ChangePasswordDialog open={myPasswordOpen} onOpenChange={setMyPasswordOpen} />
+
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>

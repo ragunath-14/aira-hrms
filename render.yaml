@@ -29,18 +29,19 @@ services:
     branch: main
     autoDeployTrigger: commit
 
-    # Free plan does NOT support preDeployCommand, and has no Shell, so schema
-    # migrations, the roles/permissions seed and the first-admin bootstrap all
-    # run at the end of the build step. Env vars (including DATABASE_URL) are
-    # available during the build phase on Render. If any step fails, the build
-    # fails and the previous version keeps serving.
+    # Free plan does NOT support preDeployCommand, and has no Shell, so the
+    # database setup runs at the end of the build: `npm run build` triggers the
+    # "postbuild" hook (scripts/postbuild.mjs), which on Render runs
     #   db:migrate          applies pending schema migrations (idempotent)
     #   db:seed:rbac        loads roles/permissions reference rows (idempotent;
     #                       creates NO demo accounts)
     #   db:bootstrap-admin  creates the platform owner from ADMIN_EMAIL and
     #                       ADMIN_PASSWORD if they are set (idempotent; an
     #                       existing login is never changed); skipped otherwise
-    buildCommand: npm ci --include=dev && npm run db:migrate && npm run db:seed:rbac && npm run db:bootstrap-admin && npm run build
+    # Because it hangs off `npm run build`, it also works if the service was
+    # created by hand with Render's default build command. If any step fails,
+    # the build fails and the previous version keeps serving.
+    buildCommand: npm ci --include=dev && npm run build
 
     # Bind to all interfaces; Render supplies PORT.
     startCommand: npm start -- -H 0.0.0.0

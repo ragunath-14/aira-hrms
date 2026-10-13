@@ -259,11 +259,13 @@ and environment variables).
      `?sslmode=require`.
    - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (12+ characters) and `ADMIN_NAME`: the
      first **platform owner**. `BETTER_AUTH_SECRET` is generated for you.
-4. Deploy. The build runs, in order: `npm ci`, `npm run db:migrate` (schema),
-   `npm run db:seed:rbac` (roles and permissions only, no demo accounts),
-   `npm run db:bootstrap-admin` (creates the platform owner; skipped if the
-   variables are empty; never changes an existing login) and `npm run build`.
-   If any step fails the deploy stops and the previous version keeps serving.
+4. Deploy. The build runs `npm ci` and `npm run build`; when the build ends,
+   the `postbuild` hook (`scripts/postbuild.mjs`, active only on Render) runs
+   `db:migrate` (schema), `db:seed:rbac` (roles and permissions only, no demo
+   accounts) and `db:bootstrap-admin` (creates the platform owner; skipped if
+   the variables are empty; never changes an existing login). This also works
+   with Render's default build command. If any step fails the deploy stops and
+   the previous version keeps serving.
 5. Open the service URL, sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` and you
    land on **/admin**. Create each company there and give its owner the login;
    there is no public sign-up. Afterwards you can delete `ADMIN_PASSWORD` from
@@ -303,11 +305,13 @@ Troubleshooting a failed build:
 - **`Cannot find module '@tailwindcss/postcss'`** (or `typescript`, `tsx`):
   Render installed production packages only. Everything the build and the
   database scripts need is listed under `dependencies`, so a current checkout
-  builds either way. If you created the service by hand instead of from the
-  Blueprint, set its **Build Command** to:
-  `npm ci --include=dev && npm run db:migrate && npm run db:seed:rbac && npm run db:bootstrap-admin && npm run build`
-  (the default `npm install; npm run build` would skip migrations and the
-  admin bootstrap) and its **Start Command** to `npm start -- -H 0.0.0.0`.
+  builds either way. A service created by hand can keep Render's default
+  Build Command (`npm install; npm run build`): the database setup runs from
+  the `postbuild` hook. Set its **Start Command** to `npm start -- -H 0.0.0.0`.
+- **"Invalid email or password" for the admin you set in `ADMIN_EMAIL`**: the
+  account is only created when `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set
+  during the build, and an existing login is never changed. Check the build
+  log for `[postbuild] npm run db:bootstrap-admin` and "Created login".
 - **Server exits right after the build** with "Refusing to start...": a
   required variable is missing or unsafe (see "Production safety checks").
 

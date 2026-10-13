@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/postbuild.mjs",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
