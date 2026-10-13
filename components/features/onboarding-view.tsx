@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 type Task = {
   id: string;
@@ -30,11 +31,15 @@ type Task = {
 
 type Employee = { id: string; firstName: string; lastName: string | null; employeeCode: string };
 
+// Checklists per page.
+const PAGE_SIZE = 6;
+
 export function OnboardingView({ isHr }: { isHr: boolean }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
 
   const [pick, setPick] = useState({ employeeId: "", kind: "onboarding" });
   const [custom, setCustom] = useState<Record<string, string>>({});
@@ -159,7 +164,7 @@ export function OnboardingView({ isHr }: { isHr: boolean }) {
         />
       ) : (
         <div className="space-y-4">
-          {groups.map((g) => {
+          {paginate(groups, page, PAGE_SIZE).map((g) => {
             const done = g.items.filter((i) => i.done).length;
             const pct = Math.round((done / g.items.length) * 100);
 
@@ -232,6 +237,15 @@ export function OnboardingView({ isHr }: { isHr: boolean }) {
               </Card>
             );
           })}
+
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <DataTablePagination
+              page={clampPage(page, groups.length, PAGE_SIZE)}
+              pageSize={PAGE_SIZE}
+              total={groups.length}
+              onPageChange={setPage}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { errorText } from "@/lib/format/error-text";
 import { formatDate } from "@/lib/format/date";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 type Announcement = {
   id: string;
@@ -48,6 +49,8 @@ function timeAgo(iso: string) {
   return formatDate(iso);
 }
 
+const PAGE_SIZE = 8;
+
 export function AnnouncementsView({ canManage }: { canManage: boolean }) {
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +58,7 @@ export function AnnouncementsView({ canManage }: { canManage: boolean }) {
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({ title: "", body: "", pinned: false });
 
   const [toDelete, setToDelete] = useState<Announcement | null>(null);
@@ -192,7 +196,7 @@ export function AnnouncementsView({ canManage }: { canManage: boolean }) {
         />
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
+          {paginate(items, page, PAGE_SIZE).map((item) => (
             <Card
               key={item.id}
               className={`p-4 ${item.pinned ? "border-primary/40 bg-primary/5" : ""}`}
@@ -244,6 +248,15 @@ export function AnnouncementsView({ canManage }: { canManage: boolean }) {
               </div>
             </Card>
           ))}
+
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <DataTablePagination
+              page={clampPage(page, items.length, PAGE_SIZE)}
+              pageSize={PAGE_SIZE}
+              total={items.length}
+              onPageChange={setPage}
+            />
+          </div>
         </div>
       )}
 

@@ -41,6 +41,7 @@ import {
 import { formatINR } from "@/lib/format/currency";
 import { downloadCsv } from "@/lib/format/csv";
 import { DeleteButton } from "@/components/shared/delete-button";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 type Claim = {
   id: string;
@@ -63,6 +64,8 @@ const STATUS_TONE: Record<Claim["status"], Tone> = {
 };
 const FILTERS = ["all", "pending", "approved", "rejected", "paid"] as const;
 
+const PAGE_SIZE = 10;
+
 export function ExpensesView({ isHr }: { isHr: boolean }) {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +74,7 @@ export function ExpensesView({ isHr }: { isHr: boolean }) {
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({
     category: "travel",
     amount: "",
@@ -226,7 +230,7 @@ export function ExpensesView({ isHr }: { isHr: boolean }) {
           <button
             key={f}
             type="button"
-            onClick={() => setFilter(f)}
+            onClick={() => { setFilter(f); setPage(1); }}
             className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${
               f === filter ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
@@ -258,7 +262,7 @@ export function ExpensesView({ isHr }: { isHr: boolean }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((c) => (
+              {paginate(shown, page, PAGE_SIZE).map((c) => (
                 <TableRow key={c.id}>
                   {isHr && (
                     <TableCell>
@@ -321,6 +325,8 @@ export function ExpensesView({ isHr }: { isHr: boolean }) {
               ))}
             </TableBody>
           </Table>
+
+          <DataTablePagination page={clampPage(page, shown.length, PAGE_SIZE)} pageSize={PAGE_SIZE} total={shown.length} onPageChange={setPage} />
         </Card>
       )}
 

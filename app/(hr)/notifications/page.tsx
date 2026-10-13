@@ -15,6 +15,7 @@ import { DeleteButton } from "@/components/shared/delete-button";
 import { Trash2Icon } from "lucide-react";
 import { errorText } from "@/lib/format/error-text";
 import { formatDateTime } from "@/lib/format/date";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 type Notification = {
   id: string;
@@ -26,11 +27,14 @@ type Notification = {
   createdAt: string;
 };
 
+const PAGE_SIZE = 10;
+
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   async function loadNotifications() {
     try {
@@ -146,7 +150,7 @@ export default function NotificationsPage() {
         />
       ) : (
         <div className="space-y-3">
-          {notifications.map((notification) => (
+          {paginate(notifications, page, PAGE_SIZE).map((notification) => (
             <Card
               key={notification.id}
               className={cn(!notification.isRead && "ring-primary/30")}
@@ -221,6 +225,15 @@ export default function NotificationsPage() {
               </CardContent>
             </Card>
           ))}
+
+          <Card className="overflow-hidden p-0">
+            <DataTablePagination
+              page={clampPage(page, notifications.length, PAGE_SIZE)}
+              pageSize={PAGE_SIZE}
+              total={notifications.length}
+              onPageChange={setPage}
+            />
+          </Card>
         </div>
       )}
     </div>

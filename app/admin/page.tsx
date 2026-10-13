@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckIcon, KeyRoundIcon, PlusIcon, ShieldCheckIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -254,6 +255,9 @@ export default function AccessRequestsPage() {
             <>
               <Button onClick={() => setCreateOpen(true)}>
                 <PlusIcon /> Create company
+              </Button>
+              <Button variant="outline" render={<Link href="/admin/audit" />}>
+                Audit log
               </Button>
               <Button variant="outline" onClick={() => setMyPasswordOpen(true)}>
                 <KeyRoundIcon /> Change my password

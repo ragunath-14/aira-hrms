@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/format/date";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 const LEAVE_NAV = [
   { href: "/employee/leave", label: "Overview", exact: true },
@@ -51,10 +52,13 @@ type LeavePlan = {
   createdAt: string;
 };
 
+const PAGE_SIZE = 8;
+
 export default function LeavePlannerPage() {
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [plans, setPlans] = useState<LeavePlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   const [leaveTypeId, setLeaveTypeId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -216,6 +220,7 @@ export default function LeavePlannerPage() {
         {plans.length === 0 ? (
           <EmptyState icon={CalendarDaysIcon} title="Nothing planned yet" />
         ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -227,7 +232,7 @@ export default function LeavePlannerPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {plans.map((p) => (
+              {paginate(plans, page, PAGE_SIZE).map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium text-foreground">{p.leaveType ?? "Undecided"}</TableCell>
                   <TableCell className="text-muted-foreground">
@@ -251,6 +256,8 @@ export default function LeavePlannerPage() {
               ))}
             </TableBody>
           </Table>
+          <DataTablePagination page={clampPage(page, plans.length, PAGE_SIZE)} pageSize={PAGE_SIZE} total={plans.length} onPageChange={setPage} />
+          </>
         )}
       </Card>
     </div>

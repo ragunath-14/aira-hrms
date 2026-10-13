@@ -50,7 +50,14 @@ export function DataTablePagination({
   );
 }
 
+// Keeps the page number valid after items are removed (e.g. deleting the last
+// item on the last page).
+export function clampPage(page: number, total: number, pageSize: number) {
+  return Math.min(Math.max(1, page), Math.max(1, Math.ceil(total / pageSize)));
+}
+
 export function paginate<T>(items: T[], page: number, pageSize: number): T[] {
+  page = clampPage(page, items.length, pageSize);
   const start = (page - 1) * pageSize;
   return items.slice(start, start + pageSize);
 }

@@ -32,6 +32,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { cn } from "cn";
 import { formatDateTime } from "@/lib/format/date";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 type Ticket = {
   id: string;
@@ -72,6 +73,8 @@ function when(iso: string) {
   return formatDateTime(iso);
 }
 
+const PAGE_SIZE = 10;
+
 export function TicketsView({ isHr }: { isHr: boolean }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +88,7 @@ export function TicketsView({ isHr }: { isHr: boolean }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [page, setPage] = useState(1);
   const [messageToDelete, setMessageToDelete] = useState<Comment | null>(null);
 
   async function load() {
@@ -249,7 +253,7 @@ export function TicketsView({ isHr }: { isHr: boolean }) {
           <button
             key={f}
             type="button"
-            onClick={() => setFilter(f)}
+            onClick={() => { setFilter(f); setPage(1); }}
             className={`rounded-md px-3 py-1 text-sm font-medium transition ${
               f === filter ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
@@ -269,7 +273,7 @@ export function TicketsView({ isHr }: { isHr: boolean }) {
         />
       ) : (
         <Card className="divide-y overflow-hidden p-0">
-          {shown.map((t) => (
+          {paginate(shown, page, PAGE_SIZE).map((t) => (
             <button
               key={t.id}
               type="button"
@@ -291,6 +295,7 @@ export function TicketsView({ isHr }: { isHr: boolean }) {
               <Pill tone={STATUS_TONE[t.status]}>{labelize(t.status)}</Pill>
             </button>
           ))}
+          <DataTablePagination page={clampPage(page, shown.length, PAGE_SIZE)} pageSize={PAGE_SIZE} total={shown.length} onPageChange={setPage} />
         </Card>
       )}
 

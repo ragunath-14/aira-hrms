@@ -5,6 +5,7 @@ import { PhoneCallIcon, VideoIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { formatDate, getDisplayPrefs } from "@/lib/format/date";
 import { cn } from "cn";
@@ -24,9 +25,12 @@ type Meeting = {
   attendees: { id: string; name: string }[];
 };
 
+const PAGE_SIZE = 6;
+
 // Upcoming meetings (and past ones on request) with a Join button.
 export function MeetingsPanel({ refreshKey }: { refreshKey: number }) {
   const [history, setHistory] = useState(false);
+  const [page, setPage] = useState(1);
   const [meetings, setMeetings] = useState<Meeting[] | null>(null);
   const [toCancel, setToCancel] = useState<Meeting | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -91,6 +95,7 @@ export function MeetingsPanel({ refreshKey }: { refreshKey: number }) {
           type="button"
           onClick={() => {
             setMeetings(null);
+            setPage(1);
             setHistory(!history);
           }}
           className="text-sm font-semibold text-primary underline decoration-dashed underline-offset-4"
@@ -108,7 +113,7 @@ export function MeetingsPanel({ refreshKey }: { refreshKey: number }) {
           </p>
         ) : (
           <ul className="divide-y">
-            {meetings.map((m) => {
+            {paginate(meetings, page, PAGE_SIZE).map((m) => {
               const timing = startsIn(m);
               const others = m.attendees.map((a) => a.name);
 
@@ -169,6 +174,15 @@ export function MeetingsPanel({ refreshKey }: { refreshKey: number }) {
               );
             })}
           </ul>
+        )}
+
+        {meetings && meetings.length > PAGE_SIZE && (
+          <DataTablePagination
+            page={clampPage(page, meetings.length, PAGE_SIZE)}
+            pageSize={PAGE_SIZE}
+            total={meetings.length}
+            onPageChange={setPage}
+          />
         )}
       </div>
 

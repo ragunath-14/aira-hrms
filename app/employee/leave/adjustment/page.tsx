@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 const LEAVE_NAV = [
   { href: "/employee/leave", label: "Overview", exact: true },
@@ -53,10 +54,13 @@ type AdjustmentRequest = {
 
 const currentYear = new Date().getFullYear();
 
+const PAGE_SIZE = 8;
+
 export default function LeaveAdjustmentPage() {
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [requests, setRequests] = useState<AdjustmentRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   const [leaveTypeId, setLeaveTypeId] = useState("");
   const [year, setYear] = useState(String(currentYear));
@@ -203,6 +207,7 @@ export default function LeaveAdjustmentPage() {
         {requests.length === 0 ? (
           <EmptyState icon={ClipboardListIcon} title="No adjustment requests yet" />
         ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -214,7 +219,7 @@ export default function LeaveAdjustmentPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {requests.map((r) => (
+              {paginate(requests, page, PAGE_SIZE).map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium text-foreground">{r.leaveType ?? "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{r.year}</TableCell>
@@ -230,6 +235,8 @@ export default function LeaveAdjustmentPage() {
               ))}
             </TableBody>
           </Table>
+          <DataTablePagination page={clampPage(page, requests.length, PAGE_SIZE)} pageSize={PAGE_SIZE} total={requests.length} onPageChange={setPage} />
+          </>
         )}
       </Card>
     </div>

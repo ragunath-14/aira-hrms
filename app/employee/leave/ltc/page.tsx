@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatINR } from "@/lib/format/currency";
+import { DataTablePagination, clampPage, paginate } from "@/components/shared/data-table-pagination";
 
 const LEAVE_NAV = [
   { href: "/employee/leave", label: "Overview", exact: true },
@@ -43,9 +44,12 @@ type LtcClaim = {
   createdAt: string;
 };
 
+const PAGE_SIZE = 8;
+
 export default function LtcStatusPage() {
   const [claims, setClaims] = useState<LtcClaim[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   const [blockYear, setBlockYear] = useState("");
   const [travelStartDate, setTravelStartDate] = useState("");
@@ -195,6 +199,7 @@ export default function LtcStatusPage() {
         {claims.length === 0 ? (
           <EmptyState icon={PlaneIcon} title="No LTC claims yet" />
         ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -207,7 +212,7 @@ export default function LtcStatusPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {claims.map((c) => (
+              {paginate(claims, page, PAGE_SIZE).map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium text-foreground">{c.blockYear}</TableCell>
                   <TableCell className="text-muted-foreground">
@@ -223,6 +228,8 @@ export default function LtcStatusPage() {
               ))}
             </TableBody>
           </Table>
+          <DataTablePagination page={clampPage(page, claims.length, PAGE_SIZE)} pageSize={PAGE_SIZE} total={claims.length} onPageChange={setPage} />
+          </>
         )}
       </Card>
     </div>
