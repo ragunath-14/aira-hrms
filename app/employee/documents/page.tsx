@@ -3,16 +3,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileTextIcon } from "lucide-react";
 
-import { EmptyState } from "@/components/hr/empty-state";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { formatDate } from "@/lib/format/date";
 
 type Document = {
   id: string;
@@ -161,16 +163,24 @@ export default function EmployeeDocumentsPage() {
                   <div>
                     <p className="font-medium text-foreground">{doc.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {doc.type ?? "document"} · {new Date(doc.createdAt).toLocaleDateString()}
+                      {doc.type ?? "document"} · {formatDate(doc.createdAt)}
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    render={<a href={doc.url} target="_blank" rel="noreferrer" />}
-                  >
-                    View
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      render={<a href={doc.url} target="_blank" rel="noreferrer" />}
+                    >
+                      View
+                    </Button>
+                    <DeleteButton
+                      anyone
+                      url={`/api/employee/documents/${doc.id}`}
+                      itemName={doc.name}
+                      onDeleted={loadDocuments}
+                    />
+                  </div>
                 </div>
               ))}
             </div>

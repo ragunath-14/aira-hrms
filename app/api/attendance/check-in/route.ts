@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import { dateInZone, resolveSettings, statusForCheckIn } from "@/lib/config/settings";
 export async function POST(request: Request) {
   try {
     // requireRole already resolves the tenant/user context internally —
@@ -43,7 +44,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const settings = resolveSettings(tenant.settings);
+    const today = dateInZone(new Date(), settings.timezone);
 
     const [existingAttendance] = await db
       .select()
@@ -67,6 +69,10 @@ export async function POST(request: Request) {
       );
     }
 
+    // Optional body: { workMode: "office" | "remote" }
+    const body = await request.json().catch(() => ({}));
+    const workMode = body?.workMode === "remote" ? "remote" : "office";
+
     const now = new Date();
 
     const [createdAttendance] = await db
@@ -76,7 +82,8 @@ export async function POST(request: Request) {
         employeeId: employee.id,
         attendanceDate: today,
         checkIn: now,
-        status: "present",
+        status: statusForCheckIn(now, settings),
+        workMode,
       })
       .returning();
 

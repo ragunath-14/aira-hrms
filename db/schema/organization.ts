@@ -4,7 +4,9 @@ import {
   text,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { tenants } from "./tenants";
 
@@ -28,7 +30,10 @@ export const departments = pgTable("departments", {
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .notNull(),
-}, (table) => [index("departments_tenant_id_idx").on(table.tenantId)]);
+}, (table) => [
+  index("departments_tenant_id_idx").on(table.tenantId),
+  uniqueIndex("departments_tenant_name_uidx").on(table.tenantId, sql`lower(trim(${table.name}))`),
+]);
 
 export const designations = pgTable("designations", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -50,7 +55,10 @@ export const designations = pgTable("designations", {
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .notNull(),
-}, (table) => [index("designations_tenant_id_idx").on(table.tenantId)]);
+}, (table) => [
+  index("designations_tenant_id_idx").on(table.tenantId),
+  uniqueIndex("designations_tenant_name_uidx").on(table.tenantId, sql`lower(trim(${table.name}))`),
+]);
 
 export const locations = pgTable("locations", {
   id: uuid("id").defaultRandom().primaryKey(),

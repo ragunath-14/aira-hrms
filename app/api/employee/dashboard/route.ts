@@ -8,68 +8,52 @@ import {
   payslips,
   notifications,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
+import { getOrCreateCurrentEmployee } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await getOrCreateCurrentEmployee(request);
 
-    if (!context) {
+    if (!auth) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 },
       );
     }
 
-    const { user, tenant } = context;
+    const { employee, tenant, user } = auth;
 
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.userId, user.id),
-          eq(employees.tenantId, tenant.id),
-        ),
-      )
-      .limit(1);
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Employee record not found" },
-        { status: 404 },
-      );
-    }
-
-    const leaves = await db
-      .select()
-      .from(leaveRequests)
-      .where(
-        and(
-          eq(leaveRequests.employeeId, employee.id),
-          eq(leaveRequests.tenantId, tenant.id),
-        ),
-      );
-
-    const employeePayslips = await db
-      .select()
-      .from(payslips)
-      .where(
-        and(
-          eq(payslips.employeeId, employee.id),
-          eq(payslips.tenantId, tenant.id),
-        ),
-      );
-
-    const employeeNotifications = await db
-      .select()
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.userId, user.id),
-          eq(notifications.tenantId, tenant.id),
-        ),
-      );
+    // Independent queries: run them together so the DB latency is paid once.
+    const [leaves, employeePayslips, employeeNotifications] =
+      await Promise.all([
+        db
+          .select()
+          .from(leaveRequests)
+          .where(
+            and(
+              eq(leaveRequests.employeeId, employee.id),
+              eq(leaveRequests.tenantId, tenant.id),
+            ),
+          ),
+        db
+          .select()
+          .from(payslips)
+          .where(
+            and(
+              eq(payslips.employeeId, employee.id),
+              eq(payslips.tenantId, tenant.id),
+            ),
+          ),
+        db
+          .select()
+          .from(notifications)
+          .where(
+            and(
+              eq(notifications.userId, user.id),
+              eq(notifications.tenantId, tenant.id),
+            ),
+          ),
+      ]);
 
     return NextResponse.json({
       employee: {

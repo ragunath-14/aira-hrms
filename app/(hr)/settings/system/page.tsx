@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { errorText } from "@/lib/format/error-text";
+import { setDisplayPrefs } from "@/lib/format/date";
+import { Input } from "@/components/ui/input";
 
 type SystemConfig = {
   theme: string;
@@ -24,6 +27,11 @@ type SystemConfig = {
   notifyPayroll: boolean;
   notifyLeave: boolean;
   notifySystem: boolean;
+  leaveCountNonWorkingDays: boolean;
+  shiftStart: string;
+  graceMinutes: number;
+  halfDayAfter: string;
+  minFullDayHours: number;
 };
 
 const defaultConfig: SystemConfig = {
@@ -34,6 +42,11 @@ const defaultConfig: SystemConfig = {
   notifyPayroll: true,
   notifyLeave: true,
   notifySystem: false,
+  leaveCountNonWorkingDays: false,
+  shiftStart: "09:30",
+  graceMinutes: 15,
+  halfDayAfter: "13:00",
+  minFullDayHours: 4,
 };
 
 export default function SystemSettingsPage() {
@@ -50,7 +63,7 @@ export default function SystemSettingsPage() {
         const response = await fetch("/api/settings/system");
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.error || "Failed to load system settings");
+          throw new Error(errorText(data.error, "Failed to load system settings"));
         }
         setConfig({ ...defaultConfig, ...data });
       } catch (err) {
@@ -81,9 +94,10 @@ export default function SystemSettingsPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Failed to update system settings");
+        throw new Error(errorText(data.error, "Failed to update system settings"));
       }
 
+      setDisplayPrefs({ dateFormat: config.dateFormat as "DD/MM/YYYY", timezone: config.timezone });
       setSuccess("System preferences updated successfully!");
       toast.success("System preferences updated");
     } catch (err) {
@@ -207,6 +221,94 @@ export default function SystemSettingsPage() {
                   <SelectItem value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2026-08-28)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Leave</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between py-2">
+              <div className="pr-4">
+                <p className="font-semibold text-foreground">Count weekends and holidays as leave</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Off (recommended): Saturdays, Sundays and company holidays are not deducted from a leave balance.
+                </p>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  aria-label="Count weekends and holidays as leave"
+                  checked={config.leaveCountNonWorkingDays}
+                  onChange={(e) =>
+                    setConfig({ ...config, leaveCountNonWorkingDays: e.target.checked })
+                  }
+                  className="peer sr-only"
+                />
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary-foreground peer-focus:outline-none"></div>
+              </label>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Attendance rules</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Applied to new check-ins, in the company timezone. Past records are not changed.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="shift-start" className="mb-1.5">Shift start</Label>
+                <Input
+                  id="shift-start"
+                  type="time"
+                  required
+                  value={config.shiftStart}
+                  onChange={(e) => setConfig({ ...config, shiftStart: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="grace" className="mb-1.5">Grace period (minutes)</Label>
+                <Input
+                  id="grace"
+                  type="number"
+                  min={0}
+                  max={180}
+                  required
+                  value={config.graceMinutes}
+                  onChange={(e) => setConfig({ ...config, graceMinutes: Number(e.target.value) })}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Check-ins after shift start plus grace are marked Late.</p>
+              </div>
+              <div>
+                <Label htmlFor="half-after" className="mb-1.5">Half day if checked in after</Label>
+                <Input
+                  id="half-after"
+                  type="time"
+                  required
+                  value={config.halfDayAfter}
+                  onChange={(e) => setConfig({ ...config, halfDayAfter: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="min-hours" className="mb-1.5">Minimum hours for a full day</Label>
+                <Input
+                  id="min-hours"
+                  type="number"
+                  min={0}
+                  max={12}
+                  step="0.5"
+                  required
+                  value={config.minFullDayHours}
+                  onChange={(e) => setConfig({ ...config, minFullDayHours: Number(e.target.value) })}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Checking out sooner than this marks the day Half day.</p>
+              </div>
             </div>
           </CardContent>
         </Card>

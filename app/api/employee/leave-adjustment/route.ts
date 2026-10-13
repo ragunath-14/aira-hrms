@@ -8,8 +8,8 @@ import {
   leaveTypes,
   notifications,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
-import { leaveAdjustmentCreateSchema } from "@/lib/validations";
+import { getCurrentTenant } from "@/lib/auth/authorization";
+import { leaveAdjustmentCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {

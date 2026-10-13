@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { NetworkIcon, UsersIcon, User2Icon, Building2Icon } from "lucide-react";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 

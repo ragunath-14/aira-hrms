@@ -1,12 +1,15 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
-import { createNotification } from "@/lib/notifications";
-import { ROLES, type Role } from "@/lib/permissions";
+import {
+  invalidateTenantContextCache,
+  requireRole,
+} from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import { createNotification } from "@/lib/domain/notifications";
+import { ROLES, type Role } from "@/lib/auth/permissions";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -92,6 +95,8 @@ export async function PATCH(
       .where(eq(memberships.id, id))
       .returning();
 
+    invalidateTenantContextCache();
+
     await logAudit({
       tenantId: authResult.tenant.id,
       userId: authResult.user.id,
@@ -169,6 +174,8 @@ export async function DELETE(
     await db
       .delete(memberships)
       .where(eq(memberships.id, id));
+
+    invalidateTenantContextCache();
 
     return NextResponse.json({ success: true });
   } catch (error) {

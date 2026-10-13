@@ -1,14 +1,15 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { eq, and } from "drizzle-orm";
 import {
   getCurrentTenant,
   requireRole,
-} from "@/lib/authorization";
+} from "@/lib/auth/authorization";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { leaveTypes } from "@/db/schema/leaves";
-import { requirePermission } from "@/lib/authorization";
-import { type Permission } from "@/lib/permissions";
+import { leaveRequests, leaveTypes } from "@/db/schema/leaves";
+import { logAudit } from "@/lib/domain/audit";
+import { requirePermission } from "@/lib/auth/authorization";
+import { type Permission } from "@/lib/auth/permissions";
 
 const LEAVE_MANAGE_PERMISSION =
   "leave:manage" as Permission;
@@ -181,5 +182,60 @@ export async function PATCH(
       { error: "Failed to update leave type" },
       { status: 500 },
     );
+  }
+}
+
+// A leave type that has requests attached cannot be deleted: that would wipe
+// employees' leave history. HR has to keep it (or clear the requests first).
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
+
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { id } = await params;
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    const [inUse] = await db
+      .select({ id: leaveRequests.id })
+      .from(leaveRequests)
+      .where(and(eq(leaveRequests.leaveTypeId, id), eq(leaveRequests.tenantId, auth.tenant.id)))
+      .limit(1);
+
+    if (inUse) {
+      return NextResponse.json(
+        { error: "This leave type already has leave requests, so it can't be deleted." },
+        { status: 409 },
+      );
+    }
+
+    const [deleted] = await db
+      .delete(leaveTypes)
+      .where(and(eq(leaveTypes.id, id), eq(leaveTypes.tenantId, auth.tenant.id)))
+      .returning({ id: leaveTypes.id });
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
+    }
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "leave_type_deleted",
+      entity: "leave_type",
+      entityId: id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Leave type DELETE error:", error);
+    return NextResponse.json({ error: "Failed to delete leave type" }, { status: 500 });
   }
 }

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { FetchCache } from "@/components/system/fetch-cache";
+import { HydrationFlag } from "@/components/system/hydration-flag";
 import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
@@ -30,6 +32,8 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <FetchCache />
+        <HydrationFlag />
         {children}
         <Toaster position="top-right" />
       </body>

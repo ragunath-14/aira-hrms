@@ -1,10 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/authorization";
+import { zodMessage } from "@/lib/format/error-text";
+import { logAudit } from "@/lib/domain/audit";
+import { requireRole } from "@/lib/auth/authorization";
 import { db } from "@/db";
 import { employees } from "@/db/schema/employees";
 import { salaryStructures } from "@/db/schema";
-import { salaryStructureCreateSchema } from "@/lib/validations";
+import { salaryStructureCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {
@@ -66,7 +68,7 @@ export async function POST(request: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.flatten() },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
       );
     }
@@ -92,6 +94,37 @@ export async function POST(request: Request) {
       );
     }
 
+    if ((status ?? "active") === "active") {
+      const [overlap] = await db
+        .select({ id: salaryStructures.id })
+        .from(salaryStructures)
+        .where(
+          and(
+            eq(salaryStructures.tenantId, auth.tenant.id),
+            eq(salaryStructures.employeeId, employeeId),
+            eq(salaryStructures.status, "active"),
+            or(
+              isNull(salaryStructures.effectiveTo),
+              gte(salaryStructures.effectiveTo, effectiveFrom),
+            ),
+            effectiveTo
+              ? lte(salaryStructures.effectiveFrom, effectiveTo)
+              : undefined,
+          ),
+        )
+        .limit(1);
+
+      if (overlap) {
+        return NextResponse.json(
+          {
+            error:
+              "This employee already has an active salary structure for those dates. End it first (set its effective-to date).",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const [structure] = await db
       .insert(salaryStructures)
       .values({
@@ -103,6 +136,14 @@ export async function POST(request: Request) {
         status: status || "active",
       })
       .returning();
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "salary_structure_created",
+      entity: "salary_structure",
+      entityId: structure.id,
+    });
 
     return NextResponse.json(structure, { status: 201 });
   } catch (error) {

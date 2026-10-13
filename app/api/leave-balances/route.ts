@@ -1,9 +1,9 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { and, eq } from "drizzle-orm";
 import {
   getCurrentTenant,
   requireRole,
-} from "@/lib/authorization";
+} from "@/lib/auth/authorization";
 import { db } from "@/db";
 import {
   leaveBalances,
@@ -11,10 +11,10 @@ import {
 } from "@/db/schema/leaves";
 import { NextResponse } from "next/server";
 import { employees } from "@/db/schema/employees";
-import { requirePermission } from "@/lib/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
 import {
   type Permission,
-} from "@/lib/permissions";
+} from "@/lib/auth/permissions";
 
 const LEAVE_READ_PERMISSION =
   "leave:read" as Permission;

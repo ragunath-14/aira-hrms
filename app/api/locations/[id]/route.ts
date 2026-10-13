@@ -1,10 +1,10 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { locations } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 import { and, eq } from "drizzle-orm";
-import { locationSchema } from "@/lib/validations";
+import { locationSchema } from "@/lib/validation/schemas";
 
 type RouteContext = {
   params: Promise<{ id: string }>;

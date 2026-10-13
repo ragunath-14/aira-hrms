@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
 import { users } from "@/db/schema/users";
-import { requireRole } from "@/lib/authorization";
-import { ROLES, type Role } from "@/lib/permissions";
-import { logAudit } from "@/lib/audit";
-import { membershipCreateSchema } from "@/lib/validations";
+import { requireRole } from "@/lib/auth/authorization";
+import { ROLES, type Role } from "@/lib/auth/permissions";
+import { canSetPasswordFor, setLoginPassword } from "@/lib/auth/credentials";
+import { logAudit } from "@/lib/domain/audit";
+import { membershipCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {
@@ -94,6 +95,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      parsed.data.password &&
+      (!email || !canSetPasswordFor(authResult.role, role))
+    ) {
+      return NextResponse.json(
+        { error: "You cannot set a password for this role" },
+        { status: 403 },
+      );
+    }
+
     let user;
 
     if (email) {
@@ -173,6 +184,22 @@ export async function POST(request: Request) {
       entity: "membership",
       entityId: membership.id,
     });
+
+    if (parsed.data.password && email) {
+      await setLoginPassword({
+        email: user.email,
+        name: user.name,
+        password: parsed.data.password,
+      });
+
+      await logAudit({
+        tenantId: authResult.tenant.id,
+        userId: authResult.user.id,
+        action: "login_created",
+        entity: "membership",
+        entityId: membership.id,
+      });
+    }
 
     return NextResponse.json(
       { membership, user },

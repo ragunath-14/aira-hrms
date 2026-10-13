@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 import { BellIcon, CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { Trash2Icon } from "lucide-react";
+import { errorText } from "@/lib/format/error-text";
+import { formatDateTime } from "@/lib/format/date";
 
 type Notification = {
   id: string;
@@ -18,6 +22,7 @@ type Notification = {
   title: string;
   message: string;
   isRead: boolean;
+  link?: string | null;
   createdAt: string;
 };
 
@@ -34,7 +39,7 @@ export default function NotificationsPage() {
       const response = await fetch("/api/notifications");
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Failed to load notifications");
+        throw new Error(errorText(data.error, "Failed to load notifications"));
       }
       setNotifications(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -60,7 +65,7 @@ export default function NotificationsPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Failed to update notification");
+        throw new Error(errorText(data.error, "Failed to update notification"));
       }
       setNotifications((prev) =>
         prev.map((notification) =>
@@ -86,6 +91,18 @@ export default function NotificationsPage() {
     toast.success("All notifications marked as read");
   }
 
+  async function clearAll() {
+    const response = await fetch("/api/notifications", { method: "DELETE" });
+
+    if (!response.ok) {
+      toast.error("Failed to clear notifications");
+      return;
+    }
+
+    setNotifications([]);
+    toast.success("Notifications cleared");
+  }
+
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
@@ -94,11 +111,18 @@ export default function NotificationsPage() {
         title="Notifications"
         description="Updates about leave requests, approvals and important HR events."
         action={
-          unreadCount > 0 ? (
-            <Button variant="outline" size="sm" onClick={markAllAsRead}>
-              Mark all as read
-            </Button>
-          ) : undefined
+          <>
+            {unreadCount > 0 && (
+              <Button variant="outline" size="sm" onClick={markAllAsRead}>
+                Mark all as read
+              </Button>
+            )}
+            {notifications.length > 0 && (
+              <Button variant="outline" size="sm" onClick={clearAll}>
+                <Trash2Icon /> Clear all
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -153,24 +177,47 @@ export default function NotificationsPage() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {notification.message}
                     </p>
+                    {notification.link && (
+                      <a
+                        href={notification.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                      >
+                        Join meeting
+                      </a>
+                    )}
 
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {new Date(notification.createdAt).toLocaleString()}
+                      {formatDateTime(notification.createdAt)}
                     </p>
                   </div>
                 </div>
 
-                {!notification.isRead && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    disabled={markingId === notification.id}
-                    onClick={() => markAsRead(notification.id)}
-                    aria-label="Mark as read"
-                  >
-                    <CheckIcon className="size-4" />
-                  </Button>
-                )}
+                <div className="flex shrink-0 items-center">
+                  {!notification.isRead && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={markingId === notification.id}
+                      onClick={() => markAsRead(notification.id)}
+                      aria-label="Mark as read"
+                    >
+                      <CheckIcon className="size-4" />
+                    </Button>
+                  )}
+                  <DeleteButton
+                    anyone
+                    url={`/api/notifications/${notification.id}`}
+                    itemName="notification"
+                    title="Delete this notification?"
+                    onDeleted={() =>
+                      setNotifications((prev) =>
+                        prev.filter((n) => n.id !== notification.id),
+                      )
+                    }
+                  />
+                </div>
               </CardContent>
             </Card>
           ))}

@@ -1,4 +1,4 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
@@ -9,8 +9,8 @@ import {
   leaveRequests,
   notifications,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { getCurrentTenant } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
 
 function todayUtcDateString() {
   return new Date().toISOString().slice(0, 10);

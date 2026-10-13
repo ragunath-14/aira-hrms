@@ -1,10 +1,13 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { employees } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
-import { employeeCreateSchema } from "@/lib/validations";
+import { zodMessage } from "@/lib/format/error-text";
+import { findEmployeeDuplicate } from "@/lib/domain/employee-checks";
+import { ensureLeaveBalances } from "@/lib/domain/leave-balances";
+import { requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import { employeeCreateSchema } from "@/lib/validation/schemas";
 import {
   and,
   eq,
@@ -113,12 +116,22 @@ export async function POST(request: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.flatten() },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
       );
     }
 
     const data = parsed.data;
+
+    const duplicate = await findEmployeeDuplicate({
+      tenantId: auth.tenant.id,
+      employeeCode: data.employeeCode,
+      email: data.email,
+    });
+
+    if (duplicate) {
+      return NextResponse.json({ error: duplicate }, { status: 409 });
+    }
 
     const result = await db
       .insert(employees)
@@ -132,6 +145,7 @@ export async function POST(request: Request) {
         dateOfJoining: data.dateOfJoining
           ? new Date(data.dateOfJoining)
           : null,
+        dateOfBirth: data.dateOfBirth || null,
         departmentId: data.departmentId || null,
         designationId: data.designationId || null,
         locationId: data.locationId || null,
@@ -140,6 +154,9 @@ export async function POST(request: Request) {
         status: data.status || "active",
       })
       .returning();
+
+    // New joiners get this year's leave allowance straight away.
+    await ensureLeaveBalances(auth.tenant.id, result[0].id);
 
     await logAudit({
       tenantId: auth.tenant.id,

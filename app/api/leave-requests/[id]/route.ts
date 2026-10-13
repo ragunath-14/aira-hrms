@@ -1,6 +1,6 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
@@ -9,7 +9,7 @@ import {
 } from "@/db/schema/leaves";
 import { employees } from "@/db/schema/employees";
 import { notifications } from "@/db/schema/notifications";
-import { logAudit } from "@/lib/audit";
+import { logAudit } from "@/lib/domain/audit";
 
 export async function PATCH(
   request: Request,
@@ -87,6 +87,34 @@ export async function PATCH(
       );
     }
 
+    // Nobody reviews their own request, and the approver is recorded.
+    const [[requester], [approver]] = await Promise.all([
+      db
+        .select({ userId: employees.userId })
+        .from(employees)
+        .where(eq(employees.id, leaveRequest.employeeId))
+        .limit(1),
+      db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.userId, auth.user.id),
+            eq(employees.tenantId, auth.tenant.id),
+          ),
+        )
+        .limit(1),
+    ]);
+
+    if (requester?.userId && requester.userId === auth.user.id) {
+      return Response.json(
+        { error: "You cannot review your own leave request" },
+        { status: 403 },
+      );
+    }
+
+    const approverEmployeeId = approver?.id ?? null;
+
     if (action === "reject") {
       // The update and the employee lookup are independent of each
       // other (both only need leaveRequest, already in hand) — running
@@ -98,7 +126,7 @@ export async function PATCH(
           .update(leaveRequests)
           .set({
             status: "rejected",
-            managerId: null,
+            managerId: approverEmployeeId,
             managerComment:
               body.comment?.trim() || null,
             updatedAt: new Date(),
@@ -269,7 +297,7 @@ export async function PATCH(
         .update(leaveRequests)
         .set({
           status: "approved",
-          managerId: null,
+          managerId: approverEmployeeId,
           managerComment:
             body.comment?.trim() || null,
           updatedAt: new Date(),
@@ -322,5 +350,77 @@ export async function PATCH(
       { error: "Failed to process leave request" },
       { status: 500 },
     );
+  }
+}
+
+
+// HR removes a leave request. If it was approved, the days it used are given
+// back to the employee's balance so nothing is lost silently.
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
+
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { id } = await context.params;
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(leaveRequests)
+      .where(and(eq(leaveRequests.id, id), eq(leaveRequests.tenantId, auth.tenant.id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
+    }
+
+    if (existing.status === "approved") {
+      const [balance] = await db
+        .select()
+        .from(leaveBalances)
+        .where(
+          and(
+            eq(leaveBalances.tenantId, auth.tenant.id),
+            eq(leaveBalances.employeeId, existing.employeeId),
+            eq(leaveBalances.leaveTypeId, existing.leaveTypeId),
+            eq(leaveBalances.year, new Date(existing.startDate).getUTCFullYear()),
+          ),
+        )
+        .limit(1);
+
+      if (balance) {
+        await db
+          .update(leaveBalances)
+          .set({
+            usedDays: Math.max(0, balance.usedDays - existing.totalDays),
+            remainingDays: balance.remainingDays + existing.totalDays,
+            updatedAt: new Date(),
+          })
+          .where(eq(leaveBalances.id, balance.id));
+      }
+    }
+
+    await db.delete(leaveRequests).where(eq(leaveRequests.id, id));
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "leave_request_deleted",
+      entity: "leave_request",
+      entityId: id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Leave request DELETE error:", error);
+    return NextResponse.json({ error: "Failed to delete leave request" }, { status: 500 });
   }
 }

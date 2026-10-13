@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { permissions, rolePermissions, roles } from "@/db/schema/rbac";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {

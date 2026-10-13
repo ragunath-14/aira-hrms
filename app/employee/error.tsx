@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/hr/error-state";
+import { ErrorState } from "@/components/shared/error-state";
 
 export default function EmployeePortalError({
   error,

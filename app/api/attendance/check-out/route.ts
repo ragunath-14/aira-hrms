@@ -4,8 +4,9 @@ import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import { dateInZone, resolveSettings } from "@/lib/config/settings";
 export async function POST(request: Request) {
   try {
     // requireRole already resolves the tenant/user context internally —
@@ -46,7 +47,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const settings = resolveSettings(tenant.settings);
+    const today = dateInZone(new Date(), settings.timezone);
 
     const [existingAttendance] = await db
       .select()
@@ -77,10 +79,25 @@ export async function POST(request: Request) {
       );
     }
 
+    const checkOut = new Date();
+
+    // A day shorter than the company's minimum counts as a half day.
+    const workedHours =
+      existingAttendance.checkIn
+        ? (checkOut.getTime() - existingAttendance.checkIn.getTime()) / 3_600_000
+        : null;
+    const shortDay =
+      workedHours !== null &&
+      workedHours < settings.minFullDayHours &&
+      (existingAttendance.status === "present" || existingAttendance.status === "late");
+
     const [updatedAttendance] = await db
       .update(attendance)
       .set({
-        checkOut: new Date(),
+        checkOut,
+        breakType: null,
+        breakUntil: null,
+        ...(shortDay ? { status: "half_day" } : {}),
         updatedAt: new Date(),
       })
       .where(

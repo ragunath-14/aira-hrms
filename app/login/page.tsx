@@ -48,8 +48,16 @@ export default function LoginPage() {
         method: "POST",
       });
 
+      const syncData = await syncResponse.json().catch(() => null);
+
       if (!syncResponse.ok) {
-        setMessage("Login successful, but user sync failed");
+        setMessage(syncData?.error ?? "Login successful, but user sync failed");
+        return;
+      }
+
+      // The platform owner has no company; go straight to Access Requests.
+      if (syncData?.user?.isSuperAdmin) {
+        window.location.href = "/admin";
         return;
       }
 
@@ -69,6 +77,18 @@ export default function LoginPage() {
       }
 
       const tenantContext = await tenantResponse.json();
+
+      // Platform owner goes to the access-requests page; companies still
+      // waiting for approval go to the waiting page.
+      if (tenantContext?.user?.isSuperAdmin) {
+        window.location.href = "/admin";
+        return;
+      }
+
+      if (tenantContext?.tenant?.accessStatus !== "approved") {
+        window.location.href = "/pending-approval";
+        return;
+      }
 
       // 4. Read role from authenticated membership
       const role = tenantContext?.membership?.role;
@@ -174,6 +194,7 @@ export default function LoginPage() {
               <Input
                 id="login-email"
                 type="email"
+                autoComplete="username"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -186,6 +207,7 @@ export default function LoginPage() {
               <Input
                 id="login-password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

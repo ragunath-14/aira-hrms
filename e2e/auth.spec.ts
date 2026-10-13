@@ -37,32 +37,19 @@ test.describe("Login page", () => {
   });
 });
 
-test.describe("Signup page", () => {
-  test("renders the signup form", async ({ page }) => {
+test.describe("Sign-up is disabled", () => {
+  test("the signup page sends visitors to login", async ({ page }) => {
     await page.goto("/signup");
 
-    await expect(
-      page.getByRole("heading", { name: "Create your account" }),
-    ).toBeVisible();
-    await expect(page.getByPlaceholder("Name")).toBeVisible();
-    await expect(page.getByPlaceholder("Email")).toBeVisible();
-    await expect(page.getByPlaceholder("Password")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sign Up" })).toBeVisible();
+    await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("requires name, email and password before submitting", async ({
-    page,
-  }) => {
-    await page.goto("/signup");
+  test("the public sign-up endpoint is closed", async ({ request }) => {
+    const response = await request.post("/api/auth/sign-up/email", {
+      data: { name: "X", email: "x@example.com", password: "A-long-password-123" },
+    });
 
-    await page.getByRole("button", { name: "Sign Up" }).click();
-
-    await expect(page).toHaveURL(/\/signup$/);
-    await expect(
-      page
-        .getByPlaceholder("Name")
-        .evaluate((el: HTMLInputElement) => el.validity.valid),
-    ).resolves.toBe(false);
+    expect(response.status()).toBe(403);
   });
 });
 
@@ -117,7 +104,7 @@ test.describe("Route protection (API routes)", () => {
     request,
   }) => {
     // /api/auth/* must stay reachable even with no session cookie,
-    // since that's how sign-in/sign-up themselves happen.
+    // since that's how sign-in itself happens.
     const response = await request.post("/api/auth/sign-in/email", {
       data: { email: "nobody@example.com", password: "wrong-password" },
     });

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { designations } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
+import { zodMessage } from "@/lib/format/error-text";
+import { nameTaken } from "@/lib/domain/name-checks";
+import { logAudit } from "@/lib/domain/audit";
+import { requireRole } from "@/lib/auth/authorization";
 import { eq } from "drizzle-orm";
-import { designationSchema } from "@/lib/validations";
+import { designationSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {
@@ -59,8 +62,24 @@ export async function POST(request: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.flatten() },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
+      );
+    }
+
+    if (
+      await nameTaken({
+        table: designations,
+        nameColumn: designations.name,
+        tenantColumn: designations.tenantId,
+        idColumn: designations.id,
+        tenantId: auth.tenant.id,
+        name: parsed.data.name,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "A designation with this name already exists" },
+        { status: 409 },
       );
     }
 
@@ -72,6 +91,14 @@ export async function POST(request: Request) {
         description: parsed.data.description || null,
       })
       .returning();
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "designation_created",
+      entity: "designation",
+      entityId: result[0].id,
+    });
 
     return NextResponse.json(result[0], { status: 201 });
   } catch (error) {

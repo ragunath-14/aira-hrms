@@ -2,10 +2,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema/users";
-import { tenants } from "@/db/schema/tenants";
 import { memberships } from "@/db/schema/memberships";
-import { auth } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
+import { auth } from "@/lib/auth/server";
+import { logAudit } from "@/lib/domain/audit";
 
 export async function POST(request: Request) {
   try {
@@ -60,36 +59,15 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Create a tenant for a new account
-    const [tenant] = await db
-      .insert(tenants)
-      .values({
-        name: `${session.user.name}'s Company`,
-        slug: `company-${user.id}`,
-        email: session.user.email,
-      })
-      .returning();
-
-    // 4. Make the first user the tenant owner
-    const [membership] = await db
-      .insert(memberships)
-      .values({
-        userId: user.id,
-        tenantId: tenant.id,
-        role: "owner",
-      })
-      .returning();
+    // 3. Companies are created only by the platform owner, so a user with no
+    // membership has no access (a platform admin does not need one).
+    if (user.isSuperAdmin) {
+      return Response.json({ user, message: "Platform administrator" });
+    }
 
     return Response.json(
-      {
-        user,
-        tenant,
-        membership,
-        message: "User and tenant provisioned successfully",
-      },
-      {
-        status: 201,
-      },
+      { error: "Your account is not linked to any company. Contact your administrator." },
+      { status: 403 },
     );
   } catch (error) {
     console.error("User provisioning error:", error);

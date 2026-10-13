@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { PlaneIcon } from "lucide-react";
 
-import { RouteTabs } from "@/components/hr/route-tabs";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { RouteTabs } from "@/components/layout/route-tabs";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { formatINR } from "@/lib/format/currency";
 
 const LEAVE_NAV = [
   { href: "/employee/leave", label: "Overview", exact: true },
@@ -213,7 +214,7 @@ export default function LtcStatusPage() {
                     {c.travelStartDate ?? "—"} → {c.travelEndDate ?? "—"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{c.destination ?? "—"}</TableCell>
-                  <TableCell>₹{Number(c.amountClaimed).toLocaleString()}</TableCell>
+                  <TableCell>{formatINR(c.amountClaimed)}</TableCell>
                   <TableCell>
                     <StatusBadge status={c.status} />
                   </TableCell>

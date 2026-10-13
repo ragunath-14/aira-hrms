@@ -2,12 +2,12 @@ import { eq, and } from "drizzle-orm";
 import {
   getCurrentTenant,
   requireRole,
-} from "@/lib/authorization";
+} from "@/lib/auth/authorization";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { leaveTypes } from "@/db/schema/leaves";
-import { requirePermission } from "@/lib/authorization";
-import { type Permission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/auth/authorization";
+import { type Permission } from "@/lib/auth/permissions";
 
 const LEAVE_MANAGE_PERMISSION =
   "leave:manage" as Permission;

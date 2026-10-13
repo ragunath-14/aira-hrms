@@ -11,14 +11,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -54,6 +54,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatINR } from "@/lib/format/currency";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { errorText } from "@/lib/format/error-text";
+import { formatDate } from "@/lib/format/date";
 
 type Employee = {
   id: string;
@@ -202,7 +206,7 @@ export default function LeaveManagementPage() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to fetch employees");
+      throw new Error(errorText(data.error, "Failed to fetch employees"));
     }
 
     setEmployees(Array.isArray(data) ? data : []);
@@ -215,7 +219,7 @@ export default function LeaveManagementPage() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to fetch leave types");
+      throw new Error(errorText(data.error, "Failed to fetch leave types"));
     }
 
     setLeaveTypes(Array.isArray(data) ? data : []);
@@ -645,7 +649,7 @@ export default function LeaveManagementPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to update leave type rules");
+        throw new Error(errorText(data.error, "Failed to update leave type rules"));
       }
 
       setSuccess("Leave type rules updated successfully.");
@@ -893,7 +897,7 @@ export default function LeaveManagementPage() {
                           </TableCell>
 
                           <TableCell className="text-muted-foreground">
-                            {request.startDate} → {request.endDate}
+                            {formatDate(request.startDate)} → {formatDate(request.endDate)}
                           </TableCell>
 
                           <TableCell className="font-medium text-foreground">
@@ -971,6 +975,19 @@ export default function LeaveManagementPage() {
                                 Processed
                               </span>
                             )}
+                            <DeleteButton
+                              url={`/api/leave-requests/${request.id}`}
+                              itemName="leave request"
+                              description={
+                                request.status === "approved"
+                                  ? "The approved days are given back to the employee's leave balance."
+                                  : "The request will be removed."
+                              }
+                              onDeleted={() => {
+                                loadRequests();
+                                loadBalances();
+                              }}
+                            />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1228,7 +1245,7 @@ export default function LeaveManagementPage() {
                               }
                             />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="flex items-center gap-1">
                             <Button
                               type="button"
                               variant="outline"
@@ -1237,6 +1254,12 @@ export default function LeaveManagementPage() {
                             >
                               Edit Rules
                             </Button>
+                            <DeleteButton
+                              url={`/api/leave-types/${leaveType.id}`}
+                              itemName={leaveType.name}
+                              description="Only leave types nobody has requested yet can be deleted. Otherwise mark it inactive."
+                              onDeleted={loadLeaveTypes}
+                            />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1506,7 +1529,7 @@ export default function LeaveManagementPage() {
                             {claim.destination || "—"}
                           </TableCell>
                           <TableCell className="font-medium text-foreground">
-                            ₹{Number(claim.amountClaimed).toLocaleString()}
+                            {formatINR(claim.amountClaimed)}
                           </TableCell>
                           <TableCell>
                             <StatusBadge status={claim.status} />

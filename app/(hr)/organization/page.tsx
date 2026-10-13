@@ -10,9 +10,9 @@ import {
   UsersIcon,
 } from "lucide-react";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

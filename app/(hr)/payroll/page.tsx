@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, IndianRupee, Receipt } from "lucide-react";
+import { CheckCircle2, IndianRupee, PlayIcon, Receipt } from "lucide-react";
+import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
@@ -22,10 +23,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatINR } from "@/lib/format/currency";
+import { DownloadIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useIsHr } from "@/hooks/use-is-hr";
+import { downloadCsv } from "@/lib/format/csv";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { formatDate } from "@/lib/format/date";
 
 type PayrollRecord = {
   id: string;
   employeeId: string;
+  employeeName: string | null;
+  employeeCode: string | null;
   payrollPeriod: string;
   basicSalary: string;
   totalAllowances: string;
@@ -55,8 +75,45 @@ export default function PayrollPage() {
   const [payrollPage, setPayrollPage] = useState(1);
   const [payslipsPage, setPayslipsPage] = useState(1);
 
-  useEffect(() => {
-    async function loadPayroll() {
+  const isHr = useIsHr();
+  const [runOpen, setRunOpen] = useState(false);
+  const [runMonth, setRunMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [running, setRunning] = useState(false);
+
+  async function runPayroll(e: React.FormEvent) {
+    e.preventDefault();
+    setRunning(true);
+
+    try {
+      const res = await fetch("/api/payroll/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payrollPeriod: runMonth }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to run payroll");
+      }
+
+      const notes = [
+        data.alreadyPaid ? `${data.alreadyPaid} already paid` : "",
+        data.noStructure ? `${data.noStructure} without a salary structure` : "",
+      ].filter(Boolean);
+
+      toast.success(
+        `Payroll for ${data.payrollPeriod}: ${data.created} payslip${data.created === 1 ? "" : "s"} generated${notes.length ? ` (${notes.join(", ")})` : ""}`,
+      );
+      setRunOpen(false);
+      loadPayroll();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to run payroll");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function loadPayroll() {
       try {
         const [payrollResponse, payslipResponse] = await Promise.all([
           fetch("/api/payroll"),
@@ -75,8 +132,9 @@ export default function PayrollPage() {
       } finally {
         setLoading(false);
       }
-    }
+  }
 
+  useEffect(() => {
     loadPayroll();
   }, []);
 
@@ -100,6 +158,38 @@ export default function PayrollPage() {
       <PageHeader
         title="Payroll"
         description="Payroll records and employee payslips."
+        action={
+          <>
+          {isHr && (
+            <Button onClick={() => setRunOpen(true)}>
+              <PlayIcon /> Run payroll
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            disabled={payroll.length === 0}
+            onClick={() =>
+              downloadCsv(
+                `payroll-${new Date().toISOString().slice(0, 10)}.csv`,
+                ["Code", "Employee", "Period", "Basic (INR)", "Allowances (INR)", "Deductions (INR)", "Net (INR)", "Status"],
+                payroll.map((r) => [
+                  r.employeeCode,
+                  r.employeeName,
+                  r.payrollPeriod,
+                  r.basicSalary,
+                  r.totalAllowances,
+                  r.totalDeductions,
+                  r.netSalary,
+                  r.status,
+                ]),
+              )
+            }
+          >
+            <DownloadIcon />
+            Export CSV
+          </Button>
+          </>
+        }
       />
 
       {loading ? (
@@ -153,31 +243,44 @@ export default function PayrollPage() {
                       <TableHead>Deductions</TableHead>
                       <TableHead>Net Salary</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {pagedPayroll.map((record) => (
                       <TableRow key={record.id}>
-                        <TableCell className="text-muted-foreground">
-                          {record.employeeId}
+                        <TableCell>
+                          <div className="font-medium">{record.employeeName ?? "—"}</div>
+                          {record.employeeCode && (
+                            <div className="text-xs text-muted-foreground">{record.employeeCode}</div>
+                          )}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {record.payrollPeriod}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          ₹{record.basicSalary}
+                          {formatINR(record.basicSalary)}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          ₹{record.totalAllowances}
+                          {formatINR(record.totalAllowances)}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          ₹{record.totalDeductions}
+                          {formatINR(record.totalDeductions)}
                         </TableCell>
                         <TableCell className="font-semibold text-foreground">
-                          ₹{record.netSalary}
+                          {formatINR(record.netSalary)}
                         </TableCell>
                         <TableCell>
                           <StatusBadge status={record.status} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DeleteButton
+                            url={`/api/payroll/${record.id}`}
+                            itemName="payroll record"
+                            title="Delete this payroll record?"
+                            description={`${record.employeeName ?? "This employee"}'s ${record.payrollPeriod} payroll and its payslip will be permanently removed.`}
+                            onDeleted={loadPayroll}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -211,9 +314,17 @@ export default function PayrollPage() {
                   {pagedPayslips.map((payslip) => (
                     <Card key={payslip.id}>
                       <CardContent>
-                        <p className="text-sm text-muted-foreground">
-                          Payroll Period
-                        </p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-muted-foreground">
+                            Payroll Period
+                          </p>
+                          <DeleteButton
+                            url={`/api/payslips/${payslip.id}`}
+                            itemName="payslip"
+                            description="Only the payslip is removed; the payroll record stays."
+                            onDeleted={loadPayroll}
+                          />
+                        </div>
 
                         <p className="mt-1 font-semibold text-foreground">
                           {payslip.payrollPeriod}
@@ -224,34 +335,34 @@ export default function PayrollPage() {
                             <span className="text-muted-foreground">
                               Basic
                             </span>
-                            <span>₹{payslip.basicSalary}</span>
+                            <span>{formatINR(payslip.basicSalary)}</span>
                           </div>
 
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">
                               Allowances
                             </span>
-                            <span>₹{payslip.totalAllowances}</span>
+                            <span>{formatINR(payslip.totalAllowances)}</span>
                           </div>
 
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">
                               Deductions
                             </span>
-                            <span>₹{payslip.totalDeductions}</span>
+                            <span>{formatINR(payslip.totalDeductions)}</span>
                           </div>
 
                           <Separator className="my-2" />
 
                           <div className="flex justify-between font-bold text-foreground">
                             <span>Net Salary</span>
-                            <span>₹{payslip.netSalary}</span>
+                            <span>{formatINR(payslip.netSalary)}</span>
                           </div>
                         </div>
 
                         <p className="mt-4 text-xs text-muted-foreground">
                           Generated:{" "}
-                          {new Date(payslip.generatedAt).toLocaleDateString()}
+                          {formatDate(payslip.generatedAt)}
                         </p>
                       </CardContent>
                     </Card>
@@ -269,6 +380,36 @@ export default function PayrollPage() {
           </Card>
         </>
       )}
+
+      <Dialog open={runOpen} onOpenChange={setRunOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Run payroll</DialogTitle>
+            <DialogDescription>
+              Pays every active employee for the month from their salary structure and generates their payslips. Anyone already paid for that month is skipped.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={runPayroll} className="space-y-4">
+            <div>
+              <Label htmlFor="run-month" className="mb-1.5">Month</Label>
+              <Input
+                id="run-month"
+                type="month"
+                required
+                value={runMonth}
+                onChange={(e) => setRunMonth(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRunOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={running || !runMonth}>
+                {running ? "Running…" : "Run payroll"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

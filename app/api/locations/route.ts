@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { locations } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 import { eq } from "drizzle-orm";
-import { locationSchema } from "@/lib/validations";
+import { locationSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {

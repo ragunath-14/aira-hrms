@@ -3,8 +3,8 @@ import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
-import { requireRole } from "@/lib/authorization";
-import { isUuid } from "@/lib/ids";
+import { requireRole } from "@/lib/auth/authorization";
+import { isUuid } from "@/lib/validation/ids";
 
 import { NextResponse } from "next/server";
 

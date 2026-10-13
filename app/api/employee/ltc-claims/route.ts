@@ -3,31 +3,18 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { employees, ltcClaims, notifications } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
-import { ltcClaimCreateSchema } from "@/lib/validations";
+import { getOrCreateCurrentEmployee } from "@/lib/auth/authorization";
+import { ltcClaimCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await getOrCreateCurrentEmployee(request);
 
-    if (!context) {
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { user, tenant } = context;
-
-    const [employee] = await db
-      .select({ id: employees.id })
-      .from(employees)
-      .where(and(eq(employees.userId, user.id), eq(employees.tenantId, tenant.id)))
-      .limit(1);
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Employee record not found" },
-        { status: 404 },
-      );
-    }
+    const { employee, tenant } = auth;
 
     const claims = await db
       .select()
@@ -48,26 +35,13 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const auth = await getOrCreateCurrentEmployee(request);
 
-    if (!context) {
+    if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { user, tenant } = context;
-
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(and(eq(employees.userId, user.id), eq(employees.tenantId, tenant.id)))
-      .limit(1);
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Employee record not found" },
-        { status: 404 },
-      );
-    }
+    const { employee, tenant } = auth;
 
     const body = await request.json();
     const parsed = ltcClaimCreateSchema.safeParse(body);

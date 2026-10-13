@@ -5,7 +5,38 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// Collects value -> label from the <SelectItem> children so the closed select
+// shows "All Statuses" instead of the stored value "all" (or "__none__").
+function collectItems(
+  node: React.ReactNode,
+  out: { value: string; label: React.ReactNode }[],
+) {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return
+
+    const props = child.props as { value?: unknown; children?: React.ReactNode }
+
+    if (child.type === SelectItem && typeof props.value === "string") {
+      out.push({ value: props.value, label: props.children })
+    } else if (props.children) {
+      collectItems(props.children, out)
+    }
+  })
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function Select(props: SelectPrimitive.Root.Props<any>) {
+  const { items, children } = props
+
+  const derived = React.useMemo(() => {
+    if (items) return undefined
+    const found: { value: string; label: React.ReactNode }[] = []
+    collectItems(children, found)
+    return found.length ? found : undefined
+  }, [items, children])
+
+  return <SelectPrimitive.Root {...props} items={items ?? derived} />
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (

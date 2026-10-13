@@ -2,8 +2,8 @@ import { and, eq, gte, lte } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
-import { requirePermission } from "@/lib/authorization";
-import { type Permission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/auth/authorization";
+import { type Permission } from "@/lib/auth/permissions";
 
 const ATTENDANCE_READ_PERMISSION =
   "attendance:read" as Permission;

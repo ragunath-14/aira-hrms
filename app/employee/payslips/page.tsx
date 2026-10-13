@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { BanknoteIcon } from "lucide-react";
 
-import { EmptyState } from "@/components/hr/empty-state";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatINR } from "@/lib/format/currency";
 
 type Payslip = {
   id: string;
@@ -82,16 +83,16 @@ export default function EmployeePayslipsPage() {
                 <TableRow key={ps.id}>
                   <TableCell className="font-medium text-foreground">{ps.payrollPeriod}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    ₹{Number(ps.basicSalary).toLocaleString()}
+                    {formatINR(ps.basicSalary)}
                   </TableCell>
                   <TableCell className="text-primary">
-                    +₹{Number(ps.totalAllowances).toLocaleString()}
+                    +{formatINR(ps.totalAllowances)}
                   </TableCell>
                   <TableCell className="text-destructive">
-                    -₹{Number(ps.totalDeductions).toLocaleString()}
+                    -{formatINR(ps.totalDeductions)}
                   </TableCell>
                   <TableCell className="font-bold text-foreground">
-                    ₹{Number(ps.netSalary).toLocaleString()}
+                    {formatINR(ps.netSalary)}
                   </TableCell>
                 </TableRow>
               ))}

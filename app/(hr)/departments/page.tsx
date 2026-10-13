@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { Building2Icon, PlusIcon } from "lucide-react";
+import { Building2Icon, PencilIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { errorText } from "@/lib/format/error-text";
 
 type Department = {
   id: string;
@@ -51,6 +53,7 @@ export default function DepartmentsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function loadDepartments() {
     try {
@@ -61,7 +64,7 @@ export default function DepartmentsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch departments");
+        throw new Error(errorText(data.error, "Failed to fetch departments"));
       }
 
       setDepartments(Array.isArray(data) ? data : []);
@@ -78,7 +81,23 @@ export default function DepartmentsPage() {
     loadDepartments();
   }, []);
 
-  async function handleCreateDepartment(
+  function openCreate() {
+    setEditingId(null);
+    setName("");
+    setDescription("");
+    setError("");
+    setShowForm(true);
+  }
+
+  function openEdit(department: Department) {
+    setEditingId(department.id);
+    setName(department.name);
+    setDescription(department.description ?? "");
+    setError("");
+    setShowForm(true);
+  }
+
+  async function handleSaveDepartment(
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -92,8 +111,10 @@ export default function DepartmentsPage() {
       setSaving(true);
       setError("");
 
-      const response = await fetch("/api/departments", {
-        method: "POST",
+      const response = await fetch(
+        editingId ? `/api/departments/${editingId}` : "/api/departments",
+        {
+        method: editingId ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
@@ -101,23 +122,33 @@ export default function DepartmentsPage() {
           name: name.trim(),
           description: description.trim(),
         }),
-      });
+        },
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create department");
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : "Failed to save department",
+        );
       }
 
-      setDepartments((current) => [...current, data]);
+      setDepartments((current) =>
+        editingId
+          ? current.map((d) => (d.id === editingId ? data : d))
+          : [...current, data],
+      );
 
       setName("");
       setDescription("");
+      setEditingId(null);
       setShowForm(false);
-      toast.success("Department created");
+      toast.success(editingId ? "Department updated" : "Department created");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to create department";
+        err instanceof Error ? err.message : "Failed to save department";
       setError(message);
       toast.error(message);
     } finally {
@@ -136,12 +167,7 @@ export default function DepartmentsPage() {
         title="Departments"
         description="Manage departments across your organization."
         action={
-          <Button
-            onClick={() => {
-              setShowForm(true);
-              setError("");
-            }}
-          >
+          <Button onClick={openCreate}>
             <PlusIcon />
             Add Department
           </Button>
@@ -184,6 +210,7 @@ export default function DepartmentsPage() {
                 <TableRow>
                   <TableHead>Department</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -194,6 +221,22 @@ export default function DepartmentsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {department.description || "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit ${department.name}`}
+                        onClick={() => openEdit(department)}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <DeleteButton
+                        url={`/api/departments/${department.id}`}
+                        itemName={department.name}
+                        description="Employees in it are kept, but they will no longer belong to a department."
+                        onDeleted={loadDepartments}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -213,13 +256,15 @@ export default function DepartmentsPage() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Department</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Department" : "Add Department"}</DialogTitle>
             <DialogDescription>
-              Create a new department for your organization.
+              {editingId
+                ? "Update this department's details."
+                : "Create a new department for your organization."}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateDepartment} className="space-y-4">
+          <form onSubmit={handleSaveDepartment} className="space-y-4">
             <div>
               <Label htmlFor="department-name" className="mb-1.5">
                 Department Name
@@ -257,7 +302,7 @@ export default function DepartmentsPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Creating…" : "Create Department"}
+                {saving ? "Saving…" : editingId ? "Save Changes" : "Create Department"}
               </Button>
             </DialogFooter>
           </form>

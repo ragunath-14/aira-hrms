@@ -128,3 +128,11 @@
     @apply font-sans;
   }
 }
+
+/* Buttons look inactive until the page is interactive, so an early click is not
+   silently lost. */
+body:not([data-hydrated]) :is(button, [role="button"]) {
+  pointer-events: none;
+  opacity: 0.6;
+  cursor: progress;
+}

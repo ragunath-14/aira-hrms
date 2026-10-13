@@ -1,12 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 import { db } from "@/db";
-import {
-  employees,
-  payrollRecords,
-  payslips,
-} from "@/db/schema";
+import { payrollRecords, payslips } from "@/db/schema";
 
 export async function GET(request: Request) {
   try {
@@ -46,129 +42,68 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(request, [
-      "owner",
-      "admin",
-      "hr",
-    ]);
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
 
     if (!auth.authorized) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status },
-      );
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const body = await request.json();
+    const { payrollRecordId } = await request.json();
 
-    const {
-      employeeId,
-      payrollRecordId,
-      payrollPeriod,
-      basicSalary,
-      totalAllowances,
-      totalDeductions,
-      netSalary,
-    } = body;
-
-    if (
-      !employeeId ||
-      !payrollRecordId ||
-      !payrollPeriod ||
-      basicSalary === undefined ||
-      netSalary === undefined
-    ) {
+    if (typeof payrollRecordId !== "string") {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "payrollRecordId is required" },
         { status: 400 },
       );
     }
 
-    // Neither lookup depends on the other's result — run them together.
-    const [[employee], [payrollRecord]] = await Promise.all([
-      db
-        .select({
-          id: employees.id,
-        })
-        .from(employees)
-        .where(
-          and(
-            eq(employees.id, employeeId),
-            eq(
-              employees.tenantId,
-              auth.tenant.id,
-            ),
-          ),
-        )
-        .limit(1),
-      db
-        .select({
-          id: payrollRecords.id,
-          employeeId: payrollRecords.employeeId,
-        })
-        .from(payrollRecords)
-        .where(
-          and(
-            eq(
-              payrollRecords.id,
-              payrollRecordId,
-            ),
-            eq(
-              payrollRecords.tenantId,
-              auth.tenant.id,
-            ),
-          ),
-        )
-        .limit(1),
-    ]);
+    const [record] = await db
+      .select()
+      .from(payrollRecords)
+      .where(
+        and(
+          eq(payrollRecords.id, payrollRecordId),
+          eq(payrollRecords.tenantId, auth.tenant.id),
+        ),
+      )
+      .limit(1);
 
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Employee not found" },
-        { status: 404 },
-      );
-    }
-
-    if (!payrollRecord) {
+    if (!record) {
       return NextResponse.json(
         { error: "Payroll record not found" },
         { status: 404 },
       );
     }
 
-    if (
-      payrollRecord.employeeId !== employee.id
-    ) {
+    const [already] = await db
+      .select({ id: payslips.id })
+      .from(payslips)
+      .where(eq(payslips.payrollRecordId, record.id))
+      .limit(1);
+
+    if (already) {
       return NextResponse.json(
-        {
-          error:
-            "Payroll record does not belong to employee",
-        },
-        { status: 400 },
+        { error: "A payslip already exists for this payroll record" },
+        { status: 409 },
       );
     }
 
+    // The payslip copies the stored payroll figures, never client input.
     const [payslip] = await db
       .insert(payslips)
       .values({
         tenantId: auth.tenant.id,
-        employeeId,
-        payrollRecordId,
-        payrollPeriod,
-        basicSalary: String(basicSalary),
-        totalAllowances: String(
-          totalAllowances ?? 0,
-        ),
-        totalDeductions: String(
-          totalDeductions ?? 0,
-        ),
-        netSalary: String(netSalary),
+        employeeId: record.employeeId,
+        payrollRecordId: record.id,
+        payrollPeriod: record.payrollPeriod,
+        basicSalary: record.basicSalary,
+        totalAllowances: record.totalAllowances,
+        totalDeductions: record.totalDeductions,
+        netSalary: record.netSalary,
       })
       .returning();
 
-    return NextResponse.json(payslip, {
-      status: 201,
-    });
+    return NextResponse.json(payslip, { status: 201 });
   } catch (error) {
     console.error("POST payslip error:", error);
 

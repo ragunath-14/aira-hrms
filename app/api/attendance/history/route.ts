@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 export async function GET(request: Request) {
   try {
     const auth = await requireRole(request, [

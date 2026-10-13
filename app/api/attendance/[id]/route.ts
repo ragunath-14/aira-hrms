@@ -1,10 +1,11 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { eq, and } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
 
 export async function PATCH(
   request: Request,
@@ -56,10 +57,48 @@ export async function PATCH(
     const updateData: {
       status?: (typeof allowedStatuses)[number];
       notes?: string | null;
+      checkIn?: Date | null;
+      checkOut?: Date | null;
       updatedAt: Date;
     } = {
       updatedAt: new Date(),
     };
+
+    if (
+      body.notes !== undefined &&
+      body.notes !== null &&
+      (typeof body.notes !== "string" || body.notes.length > 500)
+    ) {
+      return Response.json(
+        { error: "Notes must be text of at most 500 characters" },
+        { status: 400 },
+      );
+    }
+
+    // Wrong punches can be fixed: send ISO times (or null to clear one).
+    const parseTime = (value: unknown) => {
+      if (value === null || value === "") return null;
+      const date = new Date(String(value));
+      return Number.isNaN(date.getTime()) ? undefined : date;
+    };
+
+    const checkIn = body.checkIn === undefined ? undefined : parseTime(body.checkIn);
+    const checkOut = body.checkOut === undefined ? undefined : parseTime(body.checkOut);
+
+    if (checkIn === undefined && body.checkIn !== undefined) {
+      return Response.json({ error: "Check-in time is not valid" }, { status: 400 });
+    }
+    if (checkOut === undefined && body.checkOut !== undefined) {
+      return Response.json({ error: "Check-out time is not valid" }, { status: 400 });
+    }
+
+    const now = Date.now() + 5 * 60 * 1000;
+    if ((checkIn && checkIn.getTime() > now) || (checkOut && checkOut.getTime() > now)) {
+      return Response.json({ error: "Times cannot be in the future" }, { status: 400 });
+    }
+
+    if (checkIn !== undefined) updateData.checkIn = checkIn;
+    if (checkOut !== undefined) updateData.checkOut = checkOut;
 
     if (body.status !== undefined) {
       updateData.status = body.status;
@@ -67,6 +106,25 @@ export async function PATCH(
 
     if (body.notes !== undefined) {
       updateData.notes = body.notes;
+    }
+
+    // Check-out must be after check-in, using the stored value for any side not sent.
+    if (checkIn !== undefined || checkOut !== undefined) {
+      const [current] = await db
+        .select({ checkIn: attendance.checkIn, checkOut: attendance.checkOut })
+        .from(attendance)
+        .where(and(eq(attendance.id, id), eq(attendance.tenantId, tenant.id)))
+        .limit(1);
+
+      const finalIn = checkIn !== undefined ? checkIn : current?.checkIn;
+      const finalOut = checkOut !== undefined ? checkOut : current?.checkOut;
+
+      if (finalIn && finalOut && finalOut <= finalIn) {
+        return Response.json(
+          { error: "Check-out must be after check-in" },
+          { status: 400 },
+        );
+      }
     }
 
     const [updatedAttendance] = await db
@@ -103,5 +161,47 @@ export async function PATCH(
       { error: "Failed to update attendance" },
       { status: 500 },
     );
+  }
+}
+
+
+// Remove a wrong or duplicate attendance record.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
+
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { id } = await params;
+    if (!isUuid(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    const [deleted] = await db
+      .delete(attendance)
+      .where(and(eq(attendance.id, id), eq(attendance.tenantId, auth.tenant.id)))
+      .returning({ id: attendance.id });
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Attendance record not found" }, { status: 404 });
+    }
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "attendance_deleted",
+      entity: "attendance",
+      entityId: id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Attendance DELETE error:", error);
+    return NextResponse.json({ error: "Failed to delete attendance record" }, { status: 500 });
   }
 }

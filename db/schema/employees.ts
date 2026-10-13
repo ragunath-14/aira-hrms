@@ -4,7 +4,9 @@ import {
   text,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { tenants } from "./tenants";
 import { departments, designations, locations } from "./organization";
@@ -30,6 +32,9 @@ export const employees = pgTable("employees", {
   phone: text("phone"),
 
   dateOfJoining: timestamp("date_of_joining"),
+
+  // YYYY-MM-DD, used for birthday reminders.
+  dateOfBirth: text("date_of_birth"),
 
   departmentId: uuid("department_id").references(
     () => departments.id,
@@ -75,4 +80,6 @@ export const employees = pgTable("employees", {
   index("employees_user_id_idx").on(table.userId),
   index("employees_manager_id_idx").on(table.managerId),
   index("employees_department_id_idx").on(table.departmentId),
+  uniqueIndex("employees_tenant_code_uidx").on(table.tenantId, sql`lower(${table.employeeCode})`),
+  uniqueIndex("employees_tenant_email_uidx").on(table.tenantId, sql`lower(${table.email})`),
 ]);

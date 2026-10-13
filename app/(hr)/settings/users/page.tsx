@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PlusIcon, UsersIcon } from "lucide-react";
+import { KeyRoundIcon, PlusIcon, UsersIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { EmptyState } from "@/components/hr/empty-state";
-import { ConfirmDialog } from "@/components/hr/confirm-dialog";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { errorText } from "@/lib/format/error-text";
+import { formatDate } from "@/lib/format/date";
 
 type Member = {
   id: string; // membershipId
@@ -51,6 +53,12 @@ type Member = {
 };
 
 const PAGE_SIZE = 10;
+
+// Mirrors lib/credentials.ts: you can set a password only for roles below
+// yours, and never for the owner. The server enforces it too.
+const RANK: Record<string, number> = { owner: 5, admin: 4, hr: 3, manager: 2, employee: 1, member: 1 };
+const canSetPassword = (actor: string, target: string) =>
+  target !== "owner" && (RANK[actor] ?? 0) > (RANK[target] ?? 0);
 
 export default function UsersSettingsPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -64,7 +72,15 @@ export default function UsersSettingsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("employee");
+  const [newPassword, setNewPassword] = useState("");
   const [savingMember, setSavingMember] = useState(false);
+
+  // Set-password dialog (write-only: passwords can be replaced, never viewed)
+  const [myRole, setMyRole] = useState("");
+  const [pwMember, setPwMember] = useState<Member | null>(null);
+  const [pw, setPw] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
 
   // Loading indicator for row level operations
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -88,7 +104,52 @@ export default function UsersSettingsPage() {
 
   useEffect(() => {
     loadMembers();
+
+    fetch("/api/tenant")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setMyRole(d?.membership?.role ?? ""))
+      .catch(() => {});
   }, []);
+
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pwMember) return;
+
+    if (pw !== pwConfirm) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    try {
+      setSavingPw(true);
+
+      const res = await fetch(`/api/memberships/${pwMember.id}/password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Failed to set password",
+        );
+      }
+
+      toast.success(
+        data.created
+          ? `Login created for ${pwMember.email}`
+          : `Password updated for ${pwMember.email}`,
+      );
+      setPwMember(null);
+      setPw("");
+      setPwConfirm("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to set password");
+    } finally {
+      setSavingPw(false);
+    }
+  }
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
@@ -106,18 +167,20 @@ export default function UsersSettingsPage() {
           email: newEmail.trim(),
           name: newName.trim() || undefined,
           role: newRole,
+          password: newPassword || undefined,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to add member");
+        throw new Error(errorText(data.error, "Failed to add member"));
       }
 
       setSuccess(`Successfully added ${newEmail} to the team!`);
       toast.success(`Added ${newEmail} to the team`);
       setNewEmail("");
       setNewName("");
+      setNewPassword("");
       setNewRole("employee");
       setShowAddForm(false);
 
@@ -147,7 +210,7 @@ export default function UsersSettingsPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to update role");
+        throw new Error(errorText(data.error, "Failed to update role"));
       }
 
       setSuccess("User role updated successfully!");
@@ -180,7 +243,7 @@ export default function UsersSettingsPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to remove member");
+        throw new Error(errorText(data.error, "Failed to remove member"));
       }
 
       setSuccess(`Removed ${email} from the organization.`);
@@ -331,13 +394,22 @@ export default function UsersSettingsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(member.createdAt).toLocaleDateString(undefined, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {formatDate(member.createdAt)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="space-x-2 whitespace-nowrap text-right">
+                      {canSetPassword(myRole, member.role) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPw("");
+                            setPwConfirm("");
+                            setPwMember(member);
+                          }}
+                        >
+                          <KeyRoundIcon /> Set password
+                        </Button>
+                      )}
                       {member.role !== "owner" && (
                         <Button
                           variant="destructive"
@@ -397,6 +469,22 @@ export default function UsersSettingsPage() {
             </div>
 
             <div>
+              <Label className="mb-1.5">Password (optional)</Label>
+              <Input
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                maxLength={128}
+                placeholder="At least 12 characters"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Gives them a login right away (their email is the user ID). Leave blank if they will sign up themselves. The password is stored hashed and cannot be viewed later, only replaced.
+              </p>
+            </div>
+
+            <div>
               <Label className="mb-1.5">Role</Label>
               <Select
                 value={newRole}
@@ -425,6 +513,54 @@ export default function UsersSettingsPage() {
               </Button>
               <Button type="submit" disabled={savingMember}>
                 {savingMember ? "Adding…" : "Add Member"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pwMember !== null} onOpenChange={(open) => !open && setPwMember(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set password</DialogTitle>
+            <DialogDescription>
+              Choose a new password for {pwMember?.email}. It replaces the current one, signs them out everywhere, and cannot be viewed afterwards.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSetPassword} className="space-y-4">
+            <div>
+              <Label htmlFor="pw-new" className="mb-1.5">New password</Label>
+              <Input
+                id="pw-new"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={12}
+                maxLength={128}
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
+            </div>
+            <div>
+              <Label htmlFor="pw-confirm" className="mb-1.5">Confirm password</Label>
+              <Input
+                id="pw-confirm"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={pwConfirm}
+                onChange={(e) => setPwConfirm(e.target.value)}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPwMember(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingPw || pw.length < 12}>
+                {savingPw ? "Saving…" : "Set password"}
               </Button>
             </DialogFooter>
           </form>

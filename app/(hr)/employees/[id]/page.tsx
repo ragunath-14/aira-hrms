@@ -6,9 +6,19 @@ import Link from "next/link";
 import { ArrowLeftIcon, FileTextIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
-import { ConfirmDialog } from "@/components/hr/confirm-dialog";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useIsHr } from "@/hooks/use-is-hr";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { selectClass } from "@/components/shared/ui-bits";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +46,9 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
+import { formatINR } from "@/lib/format/currency";
+import { errorText } from "@/lib/format/error-text";
+import { formatDate } from "@/lib/format/date";
 
 type EmployeeDetail = {
   id: string;
@@ -45,6 +58,8 @@ type EmployeeDetail = {
   email: string;
   phone: string | null;
   dateOfJoining: string | null;
+  dateOfBirth?: string | null;
+  userId?: string | null;
   departmentId: string | null;
   designationId: string | null;
   locationId: string | null;
@@ -118,6 +133,16 @@ export default function EmployeeProfilePage() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   const [editing, setEditing] = useState(false);
+  const isHr = useIsHr();
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [creatingLogin, setCreatingLogin] = useState(false);
+  const [orgLists, setOrgLists] = useState<{
+    departments: { id: string; name: string }[];
+    designations: { id: string; name: string }[];
+    locations: { id: string; name: string }[];
+    managers: { id: string; name: string }[];
+  }>({ departments: [], designations: [], locations: [], managers: [] });
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState<Partial<EmployeeDetail>>({});
 
@@ -143,7 +168,7 @@ export default function EmployeeProfilePage() {
 
       if (!empRes.ok) {
         const d = await empRes.json();
-        throw new Error(d.error ?? "Failed to load employee");
+        throw new Error(errorText(d.error, "Failed to load employee"));
       }
 
       const emp: EmployeeDetail = await empRes.json();
@@ -155,6 +180,7 @@ export default function EmployeeProfilePage() {
         email: emp.email,
         phone: emp.phone ?? "",
         dateOfJoining: emp.dateOfJoining?.slice(0, 10) ?? "",
+        dateOfBirth: emp.dateOfBirth?.slice(0, 10) ?? null,
         departmentId: emp.departmentId ?? "",
         designationId: emp.designationId ?? "",
         locationId: emp.locationId ?? "",
@@ -178,6 +204,68 @@ export default function EmployeeProfilePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+    if (!editing || orgLists.departments.length + orgLists.managers.length > 0) return;
+
+    Promise.all([
+      fetch("/api/departments"),
+      fetch("/api/designations"),
+      fetch("/api/locations"),
+      fetch("/api/employees"),
+    ])
+      .then(async ([d, g, l, m]) => {
+        const read = async (r: Response) => (r.ok ? await r.json() : []);
+        const [departments, designations, locations, people] = await Promise.all([
+          read(d), read(g), read(l), read(m),
+        ]);
+
+        setOrgLists({
+          departments,
+          designations,
+          locations,
+          managers: (Array.isArray(people) ? people : []).map(
+            (p: { id: string; firstName: string; lastName: string | null; employeeCode: string }) => ({
+              id: p.id,
+              name: `${p.firstName}${p.lastName ? ` ${p.lastName}` : ""} (${p.employeeCode})`,
+            }),
+          ),
+        });
+      })
+      .catch(() => {});
+  }, [editing, orgLists]);
+
+  async function handleCreateLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employee) return;
+
+    setCreatingLogin(true);
+
+    try {
+      const res = await fetch("/api/memberships", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: employee.email,
+          name: `${employee.firstName}${employee.lastName ? ` ${employee.lastName}` : ""}`,
+          role: "employee",
+          password: loginPassword,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(errorText(data.error, "Failed to create login"));
+
+      toast.success(`Login created. They sign in with ${employee.email}.`);
+      setLoginOpen(false);
+      setLoginPassword("");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create login");
+    } finally {
+      setCreatingLogin(false);
+    }
+  }
+
   async function handleSave() {
     if (!employee) return;
     setSaving(true);
@@ -186,10 +274,14 @@ export default function EmployeeProfilePage() {
       const res = await fetch(`/api/employees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(
+          Object.fromEntries(
+            Object.entries(editForm).map(([key, value]) => [key, value === "" ? null : value]),
+          ),
+        ),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to update");
+      if (!res.ok) throw new Error(errorText(data.error, "Failed to update"));
       setEditing(false);
       toast.success("Employee updated");
       await load();
@@ -247,7 +339,7 @@ export default function EmployeeProfilePage() {
         body: JSON.stringify({ name: docName, type: docType || null, url: docUrl }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      if (!res.ok) throw new Error(errorText(data.error, "Upload failed"));
       setDocName(""); setDocType(""); setDocUrl("");
       if (fileRef.current) fileRef.current.value = "";
       toast.success("Document uploaded");
@@ -326,14 +418,22 @@ export default function EmployeeProfilePage() {
             <div>
               <h1 className="text-2xl font-bold text-foreground">{fullName}</h1>
               <p className="text-sm text-muted-foreground">{employee.employeeCode}</p>
-              <div className="mt-1">
+              <div className="mt-1 flex flex-wrap items-center gap-2">
                 <StatusBadge status={employee.status} />
+                {!employee.userId && (
+                  <span className="text-xs text-muted-foreground">No login yet</span>
+                )}
               </div>
             </div>
           </div>
           <div className="flex gap-2">
             {!editing ? (
               <>
+                {isHr && !employee.userId && (
+                  <Button variant="outline" onClick={() => setLoginOpen(true)}>
+                    Create login
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setEditing(true)}>
                   Edit
                 </Button>
@@ -432,7 +532,7 @@ export default function EmployeeProfilePage() {
                   {[
                     { label: "Email", value: employee.email },
                     { label: "Phone", value: employee.phone ?? "—" },
-                    { label: "Date of Joining", value: employee.dateOfJoining ? new Date(employee.dateOfJoining).toLocaleDateString() : "—" },
+                    { label: "Date of Joining", value: employee.dateOfJoining ? formatDate(employee.dateOfJoining) : "—" },
                     { label: "Department", value: employee.department?.name ?? "—" },
                     { label: "Designation", value: employee.designation?.name ?? "—" },
                     { label: "Location", value: employee.location?.name ?? "—" },
@@ -455,36 +555,38 @@ export default function EmployeeProfilePage() {
               <h2 className="mb-5 text-lg font-semibold text-foreground">Employment Details</h2>
               {editing ? (
                 <div className="grid gap-4 md:grid-cols-2">
+                  {(
+                    [
+                      ["Department", "departmentId", orgLists.departments],
+                      ["Designation", "designationId", orgLists.designations],
+                      ["Location", "locationId", orgLists.locations],
+                      ["Manager", "managerId", orgLists.managers],
+                    ] as const
+                  ).map(([label, key, options]) => (
+                    <div key={key}>
+                      <Label htmlFor={`emp-${key}`} className="mb-1.5">{label}</Label>
+                      <select
+                        id={`emp-${key}`}
+                        className={selectClass}
+                        value={(editForm as Record<string, string | null>)[key] ?? ""}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value || null })}
+                      >
+                        <option value="">None</option>
+                        {options
+                          .filter((o) => key !== "managerId" || o.id !== id)
+                          .map((o) => (
+                            <option key={o.id} value={o.id}>{o.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                  ))}
                   <div>
-                    <Label className="mb-1.5">Department ID</Label>
+                    <Label htmlFor="emp-dob" className="mb-1.5">Date of birth</Label>
                     <Input
-                      value={editForm.departmentId as string ?? ""}
-                      onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value || null })}
-                      placeholder="UUID"
-                    />
-                  </div>
-                  <div>
-                    <Label className="mb-1.5">Designation ID</Label>
-                    <Input
-                      value={editForm.designationId as string ?? ""}
-                      onChange={(e) => setEditForm({ ...editForm, designationId: e.target.value || null })}
-                      placeholder="UUID"
-                    />
-                  </div>
-                  <div>
-                    <Label className="mb-1.5">Location ID</Label>
-                    <Input
-                      value={editForm.locationId as string ?? ""}
-                      onChange={(e) => setEditForm({ ...editForm, locationId: e.target.value || null })}
-                      placeholder="UUID"
-                    />
-                  </div>
-                  <div>
-                    <Label className="mb-1.5">Manager ID</Label>
-                    <Input
-                      value={editForm.managerId as string ?? ""}
-                      onChange={(e) => setEditForm({ ...editForm, managerId: e.target.value || null })}
-                      placeholder="UUID"
+                      id="emp-dob"
+                      type="date"
+                      value={(editForm as Record<string, string | null>).dateOfBirth ?? ""}
+                      onChange={(e) => setEditForm({ ...editForm, dateOfBirth: e.target.value || null })}
                     />
                   </div>
                 </div>
@@ -494,7 +596,7 @@ export default function EmployeeProfilePage() {
                     { label: "Department", value: employee.department?.name ?? "Not assigned" },
                     { label: "Designation", value: employee.designation?.name ?? "Not assigned" },
                     { label: "Location", value: employee.location?.name ?? "Not assigned" },
-                    { label: "Manager ID", value: employee.managerId ?? "None" },
+                    { label: "Manager", value: orgLists.managers.find((m) => m.id === employee.managerId)?.name ?? (employee.managerId ? "Assigned" : "None") },
                   ].map(({ label, value }) => (
                     <div key={label}>
                       <p className="text-xs text-muted-foreground">{label}</p>
@@ -598,7 +700,7 @@ export default function EmployeeProfilePage() {
                   {employee.leaveRequests.map((lr) => (
                     <TableRow key={lr.id}>
                       <TableCell className="font-medium text-foreground">{lr.leaveTypeName ?? "—"}</TableCell>
-                      <TableCell className="text-muted-foreground">{lr.startDate} → {lr.endDate}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatDate(lr.startDate)} → {formatDate(lr.endDate)}</TableCell>
                       <TableCell>{lr.totalDays}</TableCell>
                       <TableCell><StatusBadge status={lr.status} /></TableCell>
                       <TableCell className="text-muted-foreground">{lr.reason ?? "—"}</TableCell>
@@ -634,10 +736,10 @@ export default function EmployeeProfilePage() {
                   {employee.payrollRecords.map((pr) => (
                     <TableRow key={pr.id}>
                       <TableCell className="font-medium text-foreground">{pr.payrollPeriod}</TableCell>
-                      <TableCell className="text-muted-foreground">₹{Number(pr.basicSalary).toLocaleString()}</TableCell>
-                      <TableCell className="text-emerald-600 dark:text-emerald-400">+₹{Number(pr.totalAllowances).toLocaleString()}</TableCell>
-                      <TableCell className="text-destructive">-₹{Number(pr.totalDeductions).toLocaleString()}</TableCell>
-                      <TableCell className="font-bold text-foreground">₹{Number(pr.netSalary).toLocaleString()}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatINR(pr.basicSalary)}</TableCell>
+                      <TableCell className="text-emerald-600 dark:text-emerald-400">+{formatINR(pr.totalAllowances)}</TableCell>
+                      <TableCell className="text-destructive">-{formatINR(pr.totalDeductions)}</TableCell>
+                      <TableCell className="font-bold text-foreground">{formatINR(pr.netSalary)}</TableCell>
                       <TableCell><StatusBadge status={pr.status} /></TableCell>
                     </TableRow>
                   ))}
@@ -700,7 +802,7 @@ export default function EmployeeProfilePage() {
                   <div key={doc.id} className="flex items-center justify-between px-6 py-4">
                     <div>
                       <p className="font-medium text-foreground">{doc.name}</p>
-                      <p className="text-xs text-muted-foreground">{doc.type ?? "document"} · {new Date(doc.createdAt).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground">{doc.type ?? "document"} · {formatDate(doc.createdAt)}</p>
                     </div>
                     <Button
                       variant="outline"
@@ -716,6 +818,40 @@ export default function EmployeeProfilePage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create login</DialogTitle>
+            <DialogDescription>
+              {employee.firstName} will sign in to My Workspace with {employee.email} and this password. It is stored hashed and cannot be viewed again; they can change it themselves after signing in.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateLogin} className="space-y-4">
+            <div>
+              <Label htmlFor="login-pw" className="mb-1.5">Password</Label>
+              <Input
+                id="login-pw"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={12}
+                maxLength={128}
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setLoginOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={creatingLogin || loginPassword.length < 12}>
+                {creatingLogin ? "Creating…" : "Create login"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={deleteDialogOpen}

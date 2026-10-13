@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardListIcon } from "lucide-react";
 
-import { ConfirmDialog } from "@/components/hr/confirm-dialog";
-import { RouteTabs } from "@/components/hr/route-tabs";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { RouteTabs } from "@/components/layout/route-tabs";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDate } from "@/lib/format/date";
 
 const LEAVE_NAV = [
   { href: "/employee/leave", label: "Overview", exact: true },
@@ -312,7 +313,7 @@ export default function EmployeeLeavePage() {
                   <TableRow key={lr.id}>
                     <TableCell className="font-medium text-foreground">{lr.leaveType ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {lr.startDate} → {lr.endDate}
+                      {formatDate(lr.startDate)} → {formatDate(lr.endDate)}
                     </TableCell>
                     <TableCell>{lr.totalDays}</TableCell>
                     <TableCell>
@@ -346,7 +347,7 @@ export default function EmployeeLeavePage() {
         title="Cancel leave request?"
         description={
           cancelTarget
-            ? `This will cancel your ${cancelTarget.leaveType ?? "leave"} request from ${cancelTarget.startDate} to ${cancelTarget.endDate}${
+            ? `This will cancel your ${cancelTarget.leaveType ?? "leave"} request from ${formatDate(cancelTarget.startDate)} to ${formatDate(cancelTarget.endDate)}${
                 cancelTarget.status === "approved" ? " and restore the leave balance" : ""
               }.`
             : undefined

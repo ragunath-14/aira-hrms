@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { MapPinIcon, PlusIcon } from "lucide-react";
+import { MapPinIcon, PlusIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { errorText } from "@/lib/format/error-text";
 
 type Location = {
   id: string;
@@ -52,6 +54,7 @@ export default function LocationsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -68,7 +71,7 @@ export default function LocationsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch locations");
+        throw new Error(errorText(data.error, "Failed to fetch locations"));
       }
 
       setLocations(Array.isArray(data) ? data : []);
@@ -85,7 +88,29 @@ export default function LocationsPage() {
     loadLocations();
   }, []);
 
-  async function handleCreateLocation(
+  function openCreate() {
+    setEditingId(null);
+    setName("");
+    setAddress("");
+    setCity("");
+    setState("");
+    setCountry("");
+    setError("");
+    setShowForm(true);
+  }
+
+  function openEdit(location: Location) {
+    setEditingId(location.id);
+    setName(location.name);
+    setAddress(location.address ?? "");
+    setCity(location.city ?? "");
+    setState(location.state ?? "");
+    setCountry(location.country ?? "");
+    setError("");
+    setShowForm(true);
+  }
+
+  async function handleSaveLocation(
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -99,8 +124,10 @@ export default function LocationsPage() {
       setSaving(true);
       setError("");
 
-      const response = await fetch("/api/locations", {
-        method: "POST",
+      const response = await fetch(
+        editingId ? `/api/locations/${editingId}` : "/api/locations",
+        {
+        method: editingId ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
@@ -111,26 +138,34 @@ export default function LocationsPage() {
           state: state.trim(),
           country: country.trim(),
         }),
-      });
+        },
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create location");
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Failed to save location",
+        );
       }
 
-      setLocations((current) => [...current, data]);
+      setLocations((current) =>
+        editingId
+          ? current.map((x) => (x.id === editingId ? data : x))
+          : [...current, data],
+      );
 
       setName("");
       setAddress("");
       setCity("");
       setState("");
       setCountry("");
+      setEditingId(null);
       setShowForm(false);
-      toast.success("Location created");
+      toast.success(editingId ? "Location updated" : "Location created");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to create location";
+        err instanceof Error ? err.message : "Failed to save location";
       setError(message);
       toast.error(message);
     } finally {
@@ -149,12 +184,7 @@ export default function LocationsPage() {
         title="Locations"
         description="Manage company office and workplace locations."
         action={
-          <Button
-            onClick={() => {
-              setShowForm(true);
-              setError("");
-            }}
-          >
+          <Button onClick={openCreate}>
             <PlusIcon />
             Add Location
           </Button>
@@ -200,6 +230,7 @@ export default function LocationsPage() {
                   <TableHead>City</TableHead>
                   <TableHead>State</TableHead>
                   <TableHead>Country</TableHead>
+                  <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -220,6 +251,22 @@ export default function LocationsPage() {
                     <TableCell className="text-muted-foreground">
                       {location.country || "—"}
                     </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit ${location.name}`}
+                        onClick={() => openEdit(location)}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <DeleteButton
+                        url={`/api/locations/${location.id}`}
+                        itemName={location.name}
+                        description="Employees at it are kept, but they will no longer have a location."
+                        onDeleted={loadLocations}
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -238,13 +285,13 @@ export default function LocationsPage() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add Location</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Location" : "Add Location"}</DialogTitle>
             <DialogDescription>
-              Add a new office or workplace location.
+              {editingId ? "Update this location's details." : "Add a new office or workplace location."}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateLocation} className="space-y-4">
+          <form onSubmit={handleSaveLocation} className="space-y-4">
             <div>
               <Label htmlFor="location-name" className="mb-1.5">
                 Location Name
@@ -323,7 +370,7 @@ export default function LocationsPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Creating…" : "Create Location"}
+                {saving ? "Saving…" : editingId ? "Save Changes" : "Create Location"}
               </Button>
             </DialogFooter>
           </form>

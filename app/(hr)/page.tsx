@@ -12,10 +12,13 @@ import {
   Wallet,
 } from "lucide-react";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { InsightsPanel } from "@/components/features/insights-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatINR } from "@/lib/format/currency";
+import { errorText } from "@/lib/format/error-text";
 
 type ReportData = {
   payrollVisible?: boolean;
@@ -43,11 +46,6 @@ type ReportData = {
   };
 };
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
 
 export default function Home() {
   const [data, setData] = useState<ReportData | null>(null);
@@ -61,7 +59,7 @@ export default function Home() {
 
         if (!response.ok) {
           const result = await response.json();
-          throw new Error(result.error || "Failed to load dashboard");
+          throw new Error(errorText(result.error, "Failed to load dashboard"));
         }
 
         const result = await response.json();
@@ -173,7 +171,7 @@ export default function Home() {
             {data?.payrollVisible !== false && (
               <StatCard
                 label="Payroll Summary"
-                value={currencyFormatter.format(
+                value={formatINR(
                   Number(data?.payroll.latestPeriodNetTotal ?? 0),
                 )}
                 hint={
@@ -229,6 +227,8 @@ export default function Home() {
               </Card>
             )}
           </div>
+
+          <InsightsPanel />
         </>
       )}
     </div>

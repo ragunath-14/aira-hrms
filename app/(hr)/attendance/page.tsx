@@ -14,14 +14,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -57,6 +57,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DownloadIcon } from "lucide-react";
+import { downloadCsv } from "@/lib/format/csv";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { formatDate } from "@/lib/format/date";
 
 type Employee = {
   id: string;
@@ -132,15 +136,6 @@ function formatTime(value: string | null) {
   });
 }
 
-function formatDate(value: string) {
-  if (!value) return "-";
-
-  return new Date(`${value}T00:00:00`).toLocaleDateString([], {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export default function AttendancePage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -186,7 +181,7 @@ export default function AttendancePage() {
     }
 
     const data = await response.json();
-    setToday(data ?? null);
+    setToday(data?.attendance ?? null);
   }
 
   async function loadRecords() {
@@ -405,10 +400,23 @@ export default function AttendancePage() {
     [records, page],
   );
 
+  // <input type="datetime-local"> wants local "YYYY-MM-DDTHH:mm".
+  const toLocalInput = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [editCheckIn, setEditCheckIn] = useState("");
+  const [editCheckOut, setEditCheckOut] = useState("");
+
   function openEdit(record: AttendanceRecord) {
     setEditing(record);
     setEditStatus(record.status);
     setEditNotes(record.notes || "");
+    setEditCheckIn(toLocalInput(record.checkIn));
+    setEditCheckOut(toLocalInput(record.checkOut));
   }
 
   function closeEdit(open: boolean) {
@@ -436,6 +444,8 @@ export default function AttendancePage() {
           body: JSON.stringify({
             status: editStatus,
             notes: editNotes,
+            checkIn: editCheckIn ? new Date(editCheckIn).toISOString() : null,
+            checkOut: editCheckOut ? new Date(editCheckOut).toISOString() : null,
           }),
         },
       );
@@ -468,6 +478,30 @@ export default function AttendancePage() {
       <PageHeader
         title="Attendance"
         description="Track employee attendance, check-ins and check-outs."
+        action={
+          <Button
+            variant="outline"
+            disabled={records.length === 0}
+            onClick={() =>
+              downloadCsv(
+                `attendance-${new Date().toISOString().slice(0, 10)}.csv`,
+                ["Code", "Employee", "Date", "Check in", "Check out", "Status", "Notes"],
+                records.map((r) => [
+                  r.employeeCode,
+                  formatRecordName(r),
+                  r.attendanceDate,
+                  r.checkIn ? new Date(r.checkIn).toLocaleTimeString("en-IN") : "",
+                  r.checkOut ? new Date(r.checkOut).toLocaleTimeString("en-IN") : "",
+                  statusLabels[r.status] ?? r.status,
+                  r.notes,
+                ]),
+              )
+            }
+          >
+            <DownloadIcon />
+            Export CSV
+          </Button>
+        }
       />
 
       {error && (
@@ -723,7 +757,7 @@ export default function AttendancePage() {
                     <TableCell className="max-w-55 truncate text-muted-foreground">
                       {record.notes || "-"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
@@ -732,6 +766,12 @@ export default function AttendancePage() {
                         <PencilIcon />
                         Correct
                       </Button>
+                      <DeleteButton
+                        url={`/api/attendance/${record.id}`}
+                        itemName="attendance record"
+                        description={`${formatRecordName(record)}'s record for ${formatDate(record.attendanceDate)} will be removed.`}
+                        onDeleted={loadAll}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -799,9 +839,33 @@ export default function AttendancePage() {
                 </Select>
               </div>
 
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="edit-checkin" className="mb-1.5">Check-in</Label>
+                  <input
+                    id="edit-checkin"
+                    type="datetime-local"
+                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={editCheckIn}
+                    onChange={(e) => setEditCheckIn(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-checkout" className="mb-1.5">Check-out</Label>
+                  <input
+                    id="edit-checkout"
+                    type="datetime-local"
+                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={editCheckOut}
+                    onChange={(e) => setEditCheckOut(e.target.value)}
+                  />
+                </div>
+              </div>
+
               <div>
                 <Label className="mb-1.5">Notes</Label>
                 <Textarea
+                  maxLength={500}
                   rows={4}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}

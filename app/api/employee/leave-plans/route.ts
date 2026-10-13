@@ -3,8 +3,8 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { employees, leavePlans, leaveTypes } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
-import { leavePlanCreateSchema } from "@/lib/validations";
+import { getCurrentTenant } from "@/lib/auth/authorization";
+import { leavePlanCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {

@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { errorText } from "@/lib/format/error-text";
 
 type Company = {
   name: string;
@@ -94,7 +95,7 @@ export default function CompanySettingsPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to save company settings");
+        throw new Error(errorText(data.error, "Failed to save company settings"));
       }
 
       setSuccess("Company settings updated successfully!");

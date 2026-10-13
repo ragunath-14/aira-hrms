@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// These tests run against a real, seeded Neon database (see db/seed.ts).
+// These tests run against a real, seeded Neon database (see db/seeds/seed.ts).
 // They log in through the actual UI and verify the tenant-isolation and
 // RBAC behavior the assignment's acceptance test requires.
 

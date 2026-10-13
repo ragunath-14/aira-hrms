@@ -1,12 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Covers the "Leave enhancements" phase added on top of the existing leave
-// module: the restructured employee portal (app/employee/**), Leave
-// Planner, Leave Encashment, Leave Adjustment, LTC claims, Leave Rules, and
-// cancelling a leave request — plus the matching HR/manager approval
-// surface and RBAC/tenant-isolation checks, in the same style as
-// tenant-flows.spec.ts. Runs against the same seeded demo tenants (see
-// db/seed.ts) — password is the same for every seeded account.
+
+import { insertApprovedLeave } from "./helpers/past-leave";
 
 const PASSWORD = "Passw0rd!123";
 
@@ -228,6 +223,18 @@ test.describe("Leave Encashment", () => {
   test("employee cannot approve their own encashment request", async ({ page }) => {
     await loginAs(page, "employee@acme-corp.test");
     const earned = await getLeaveType(page, "Earned Leave");
+    const bal = await getBalance(page, earned.id);
+    if (bal.remainingDays < 1) {
+      await loginAs(page, "hr@acme-corp.test");
+      const adj = await (
+        await page.request.post("/api/employee/leave-adjustment", {
+          data: { leaveTypeId: earned.id, year: new Date().getFullYear(), requestedDays: 5, reason: "test top-up" },
+        })
+      ).json();
+      await page.request.patch(`/api/leave-adjustment/${adj.id}`, { data: { action: "approve" } });
+      await loginAs(page, "employee@acme-corp.test");
+    }
+
     const created = await (
       await page.request.post("/api/employee/leave-encashment", {
         data: { leaveTypeId: earned.id, year: new Date().getFullYear(), daysRequested: 1 },
@@ -245,6 +252,18 @@ test.describe("Leave Encashment", () => {
   }) => {
     await loginAs(page, "employee@acme-corp.test");
     const earned = await getLeaveType(page, "Earned Leave");
+    const bal = await getBalance(page, earned.id);
+    if (bal.remainingDays < 1) {
+      await loginAs(page, "hr@acme-corp.test");
+      const adj = await (
+        await page.request.post("/api/employee/leave-adjustment", {
+          data: { leaveTypeId: earned.id, year: new Date().getFullYear(), requestedDays: 5, reason: "test top-up" },
+        })
+      ).json();
+      await page.request.patch(`/api/leave-adjustment/${adj.id}`, { data: { action: "approve" } });
+      await loginAs(page, "employee@acme-corp.test");
+    }
+
     const created = await (
       await page.request.post("/api/employee/leave-encashment", {
         data: { leaveTypeId: earned.id, year: new Date().getFullYear(), daysRequested: 1 },
@@ -394,16 +413,43 @@ test.describe("Cancelling a leave request", () => {
     const casual = await getLeaveType(page, "Casual Leave");
     const before = await getBalance(page, casual.id);
 
+    // A weekday, 3+ days out (past the notice rule), still inside this year
+    // (where the balance lives) and with no existing leave of ours on it.
+    const taken = new Set(
+      (
+        (await (await page.request.get("/api/employee/leave-requests")).json()) as {
+          startDate: string;
+          status: string;
+        }[]
+      )
+        .filter((r) => r.status !== "cancelled" && r.status !== "rejected")
+        .map((r) => r.startDate),
+    );
+    let freeWeekday = "";
+    for (let i = 3; i < 120 && !freeWeekday; i++) {
+      const d = new Date(Date.now() + i * 86_400_000);
+      const iso = d.toISOString().slice(0, 10);
+      const dow = d.getUTCDay();
+      if (dow !== 0 && dow !== 6 && !taken.has(iso) && iso.startsWith(String(new Date().getUTCFullYear()))) {
+        freeWeekday = iso;
+      }
+    }
+    expect(freeWeekday, "need a free weekday this year").not.toBe("");
+
     const created = await (
       await page.request.post("/api/leave-requests", {
         data: {
           leaveTypeId: casual.id,
-          startDate: "2026-12-29",
-          endDate: "2026-12-29",
+          startDate: freeWeekday,
+          endDate: freeWeekday,
           reason: "playwright cancel test (approved)",
         },
       })
     ).json();
+    expect(
+      created.id,
+      `leave request creation should return an id, got: ${JSON.stringify(created)}`,
+    ).toBeTruthy();
 
     await loginAs(page, "manager@acme-corp.test");
     await page.request.patch(`/api/leave-requests/${created.id}`, {
@@ -427,55 +473,23 @@ test.describe("Cancelling a leave request", () => {
   test("employee cannot cancel an approved request that has already started", async ({
     page,
   }) => {
-    // Build our own past-but-same-year fixture rather than relying on
-    // db/seed.ts's sample data: seedSampleActivity() only inserts its
-    // sample leave requests the first time a tenant has none at all, so a
-    // repeatedly-seeded/tested database can't guarantee one exists.
-    //
-    // This fixture is idempotent by necessity: once approved, this exact
-    // request is *never* cancellable (that's what we're testing), so it
-    // stays "approved" in the shared dev DB forever. A second run against
-    // the same date would correctly hit the app's overlap-prevention rule
-    // on POST (409, not a new id) — so reuse the leftover row instead of
-    // blindly re-creating one.
-    const fixtureDate = "2026-01-15";
+    // The app refuses to create leave in the past, so a leave that has
+    // already started can only exist as stored data. Insert one directly
+    // (once; later runs reuse it) instead of going through the API.
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
     await loginAs(page, "employee@acme-corp.test");
-    const casual = await getLeaveType(page, "Casual Leave");
 
     const existingRequests = await (
       await page.request.get("/api/employee/leave-requests")
     ).json();
     let target = existingRequests.find(
       (r: { startDate: string; status: string }) =>
-        r.startDate === fixtureDate && r.status === "approved",
+        r.startDate === yesterday && r.status === "approved",
     );
 
     if (!target) {
-      const created = await (
-        await page.request.post("/api/leave-requests", {
-          data: {
-            leaveTypeId: casual.id,
-            startDate: fixtureDate,
-            endDate: fixtureDate,
-            reason: "playwright past-date fixture",
-          },
-        })
-      ).json();
-      expect(
-        created.id,
-        `leave request creation should return an id, got: ${JSON.stringify(created)}`,
-      ).toBeTruthy();
-
-      await loginAs(page, "manager@acme-corp.test");
-      const approveResponse = await page.request.patch(
-        `/api/leave-requests/${created.id}`,
-        { data: { action: "approve" } },
-      );
-      expect(approveResponse.status()).toBe(200);
-
-      target = created;
-      await loginAs(page, "employee@acme-corp.test");
+      target = await insertApprovedLeave("employee@acme-corp.test", yesterday);
     }
 
     const response = await page.request.patch(

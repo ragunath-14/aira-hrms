@@ -1,0 +1,1 @@
+ALTER TABLE "ticket_comments" ADD COLUMN "deleted_at" timestamp;

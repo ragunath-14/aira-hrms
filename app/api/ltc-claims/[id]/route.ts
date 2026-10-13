@@ -1,12 +1,12 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { employees, ltcClaims, notifications } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
-import { approvalActionSchema } from "@/lib/validations";
+import { isOwnEmployee, requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import { approvalActionSchema } from "@/lib/validation/schemas";
 
 export async function PATCH(
   request: Request,
@@ -57,6 +57,13 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Only pending claims can be processed" },
         { status: 409 },
+      );
+    }
+
+    if (await isOwnEmployee(claim.employeeId, auth.user.id)) {
+      return NextResponse.json(
+        { error: "You cannot review your own LTC claim" },
+        { status: 403 },
       );
     }
 

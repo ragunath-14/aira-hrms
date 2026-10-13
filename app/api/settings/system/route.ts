@@ -3,8 +3,11 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { tenants } from "@/db/schema/tenants";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { invalidateTenantContextCache, requireRole } from "@/lib/auth/authorization";
+import { zodMessage } from "@/lib/format/error-text";
+import { resolveSettings } from "@/lib/config/settings";
+import { logAudit } from "@/lib/domain/audit";
+import { systemSettingsUpdateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   const auth = await requireRole(request, ["owner", "admin", "hr"]);
@@ -13,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  return NextResponse.json(auth.tenant.settings ?? {});
+  return NextResponse.json(resolveSettings(auth.tenant.settings));
 }
 
 export async function PUT(request: Request) {
@@ -29,16 +32,21 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    const parsed = systemSettingsUpdateSchema.safeParse(body);
+
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Settings payload must be an object" },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
       );
     }
 
     const [updated] = await db
       .update(tenants)
-      .set({ settings: body, updatedAt: new Date() })
+      .set({
+        settings: { ...(auth.tenant.settings ?? {}), ...parsed.data },
+        updatedAt: new Date(),
+      })
       .where(eq(tenants.id, auth.tenant.id))
       .returning();
 
@@ -50,7 +58,9 @@ export async function PUT(request: Request) {
       entityId: auth.tenant.id,
     });
 
-    return NextResponse.json(updated.settings);
+    invalidateTenantContextCache();
+
+    return NextResponse.json(resolveSettings(updated.settings));
   } catch (error) {
     console.error("PUT system settings error:", error);
 

@@ -2,8 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { notifications } from "@/db/schema/notifications";
-import { requireRole } from "@/lib/authorization";
-import { isUuid } from "@/lib/ids";
+import { requireRole } from "@/lib/auth/authorization";
+import { isUuid } from "@/lib/validation/ids";
 
 // Notifications are personal: every row is scoped to the caller's own user
 // and tenant, so every role may read and acknowledge its own.
@@ -104,5 +104,32 @@ export async function PATCH(request: Request) {
       { error: "Failed to update notification" },
       { status: 500 },
     );
+  }
+}
+
+
+// Clear every notification of the signed-in user.
+export async function DELETE(request: Request) {
+  try {
+    const auth = await requireRole(request, [...ALL_ROLES]);
+
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const removed = await db
+      .delete(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, auth.tenant.id),
+          eq(notifications.userId, auth.user.id),
+        ),
+      )
+      .returning({ id: notifications.id });
+
+    return NextResponse.json({ deleted: removed.length });
+  } catch (error) {
+    console.error("Notifications DELETE error:", error);
+    return NextResponse.json({ error: "Failed to clear notifications" }, { status: 500 });
   }
 }

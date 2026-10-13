@@ -1,4 +1,4 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
@@ -10,9 +10,11 @@ import { locations } from "@/db/schema/organization";
 import { attendance } from "@/db/schema/attendance";
 import { leaveRequests, leaveTypes, leaveBalances } from "@/db/schema/leaves";
 import { payrollRecords } from "@/db/schema/payroll";
-import { requireRole } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
-import { employeeUpdateSchema } from "@/lib/validations";
+import { zodMessage } from "@/lib/format/error-text";
+import { findEmployeeDuplicate } from "@/lib/domain/employee-checks";
+import { requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import { employeeUpdateSchema } from "@/lib/validation/schemas";
 
 export async function GET(
   request: Request,
@@ -183,12 +185,23 @@ export async function PATCH(
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.flatten() },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
       );
     }
 
     const data = parsed.data;
+
+    const duplicate = await findEmployeeDuplicate({
+      tenantId: auth.tenant.id,
+      employeeCode: data.employeeCode,
+      email: data.email,
+      excludeId: id,
+    });
+
+    if (duplicate) {
+      return NextResponse.json({ error: duplicate }, { status: 409 });
+    }
 
     const updated = await db
       .update(employees)
@@ -201,6 +214,10 @@ export async function PATCH(
         dateOfJoining: data.dateOfJoining
           ? new Date(data.dateOfJoining)
           : employee.dateOfJoining,
+        dateOfBirth:
+          data.dateOfBirth !== undefined
+            ? data.dateOfBirth
+            : employee.dateOfBirth,
         departmentId: data.departmentId !== undefined ? data.departmentId : employee.departmentId,
         designationId: data.designationId !== undefined ? data.designationId : employee.designationId,
         locationId: data.locationId !== undefined ? data.locationId : employee.locationId,

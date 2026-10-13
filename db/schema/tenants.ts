@@ -23,6 +23,17 @@ export const tenants = pgTable("tenants", {
 
   logo: text("logo"),
 
+  // Platform-owner approval: "pending" until the HRMS owner approves the
+  // company's sign-up. Existing and operator-created companies default to
+  // "approved"; self-service sign-ups are created as "pending".
+  accessStatus: text("access_status").notNull().default("approved"),
+
+  accessReviewedAt: timestamp("access_reviewed_at"),
+
+  accessReviewedBy: uuid("access_reviewed_by"),
+
+  accessNote: text("access_note"),
+
   settings: jsonb("settings")
     .$type<Record<string, unknown>>()
     .notNull()

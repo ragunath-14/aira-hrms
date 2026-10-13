@@ -31,6 +31,9 @@ export const notifications = pgTable("notifications", {
 
   message: text("message").notNull(),
 
+  // Optional address to open from the notification (e.g. a meeting room).
+  link: text("link"),
+
   isRead: boolean("is_read").notNull().default(false),
 
   createdAt: timestamp("created_at")

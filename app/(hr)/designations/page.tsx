@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { BriefcaseIcon, PlusIcon } from "lucide-react";
+import { BriefcaseIcon, PlusIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { errorText } from "@/lib/format/error-text";
 
 type Designation = {
   id: string;
@@ -51,6 +53,7 @@ export default function DesignationsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function loadDesignations() {
     try {
@@ -61,7 +64,7 @@ export default function DesignationsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch designations");
+        throw new Error(errorText(data.error, "Failed to fetch designations"));
       }
 
       setDesignations(Array.isArray(data) ? data : []);
@@ -78,7 +81,23 @@ export default function DesignationsPage() {
     loadDesignations();
   }, []);
 
-  async function handleCreateDesignation(
+  function openCreate() {
+    setEditingId(null);
+    setName("");
+    setDescription("");
+    setError("");
+    setShowForm(true);
+  }
+
+  function openEdit(designation: Designation) {
+    setEditingId(designation.id);
+    setName(designation.name);
+    setDescription(designation.description ?? "");
+    setError("");
+    setShowForm(true);
+  }
+
+  async function handleSaveDesignation(
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -92,8 +111,10 @@ export default function DesignationsPage() {
       setSaving(true);
       setError("");
 
-      const response = await fetch("/api/designations", {
-        method: "POST",
+      const response = await fetch(
+        editingId ? `/api/designations/${editingId}` : "/api/designations",
+        {
+        method: editingId ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
@@ -101,23 +122,31 @@ export default function DesignationsPage() {
           name: name.trim(),
           description: description.trim(),
         }),
-      });
+        },
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create designation");
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Failed to save designation",
+        );
       }
 
-      setDesignations((current) => [...current, data]);
+      setDesignations((current) =>
+        editingId
+          ? current.map((x) => (x.id === editingId ? data : x))
+          : [...current, data],
+      );
 
       setName("");
       setDescription("");
+      setEditingId(null);
       setShowForm(false);
-      toast.success("Designation created");
+      toast.success(editingId ? "Designation updated" : "Designation created");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to create designation";
+        err instanceof Error ? err.message : "Failed to save designation";
       setError(message);
       toast.error(message);
     } finally {
@@ -136,12 +165,7 @@ export default function DesignationsPage() {
         title="Designations"
         description="Manage employee designations across your organization."
         action={
-          <Button
-            onClick={() => {
-              setShowForm(true);
-              setError("");
-            }}
-          >
+          <Button onClick={openCreate}>
             <PlusIcon />
             Add Designation
           </Button>
@@ -184,6 +208,7 @@ export default function DesignationsPage() {
                 <TableRow>
                   <TableHead>Designation</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -194,6 +219,22 @@ export default function DesignationsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {designation.description || "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit ${designation.name}`}
+                        onClick={() => openEdit(designation)}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <DeleteButton
+                        url={`/api/designations/${designation.id}`}
+                        itemName={designation.name}
+                        description="Employees with it are kept, but they will no longer have a designation."
+                        onDeleted={loadDesignations}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -213,13 +254,13 @@ export default function DesignationsPage() {
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Designation</DialogTitle>
+            <DialogTitle>{editingId ? "Edit Designation" : "Add Designation"}</DialogTitle>
             <DialogDescription>
-              Create a new designation for your organization.
+              {editingId ? "Update this designation's details." : "Create a new designation for your organization."}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateDesignation} className="space-y-4">
+          <form onSubmit={handleSaveDesignation} className="space-y-4">
             <div>
               <Label htmlFor="designation-name" className="mb-1.5">
                 Designation Name
@@ -257,7 +298,7 @@ export default function DesignationsPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Creating…" : "Create Designation"}
+                {saving ? "Saving…" : editingId ? "Save Changes" : "Create Designation"}
               </Button>
             </DialogFooter>
           </form>

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { employeeDocuments } from "@/db/schema/employee-documents";
 import { employees } from "@/db/schema/employees";
-import { getCurrentTenant } from "@/lib/authorization";
+import { getCurrentTenant } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {

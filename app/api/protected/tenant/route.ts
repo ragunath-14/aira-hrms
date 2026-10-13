@@ -1,5 +1,5 @@
-import { requirePermission } from "@/lib/authorization";
-import { PERMISSIONS } from "@/lib/permissions";
+import { requirePermission } from "@/lib/auth/authorization";
+import { PERMISSIONS } from "@/lib/auth/permissions";
 
 export async function GET(request: Request) {
   const result = await requirePermission(

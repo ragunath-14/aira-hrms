@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { BellIcon } from "lucide-react";
 
-import { EmptyState } from "@/components/hr/empty-state";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { formatDateTime } from "@/lib/format/date";
 
 type Notification = {
   id: string;
@@ -18,6 +20,7 @@ type Notification = {
   message: string;
   type: string;
   isRead: boolean;
+  link?: string | null;
   createdAt: string;
 };
 
@@ -64,11 +67,32 @@ export default function EmployeeNotificationsPage() {
               <div key={n.id} className={`px-6 py-4 ${!n.isRead ? "bg-primary/5" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-medium text-foreground">{n.title}</p>
-                  {!n.isRead && <Badge className="shrink-0">New</Badge>}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {!n.isRead && <Badge className="shrink-0">New</Badge>}
+                    <DeleteButton
+                      anyone
+                      url={`/api/notifications/${n.id}`}
+                      itemName="notification"
+                      title="Delete this notification?"
+                      onDeleted={() =>
+                        setNotifications((prev) => prev.filter((x) => x.id !== n.id))
+                      }
+                    />
+                  </div>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{n.message}</p>
+                {n.link && (
+                  <a
+                    href={n.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    Join meeting
+                  </a>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {new Date(n.createdAt).toLocaleString()}
+                  {formatDateTime(n.createdAt)}
                 </p>
               </div>
             ))}

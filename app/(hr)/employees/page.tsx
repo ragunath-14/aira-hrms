@@ -2,17 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PlusIcon, UsersIcon } from "lucide-react";
+import { DownloadIcon, PlusIcon, UsersIcon } from "lucide-react";
+import { downloadCsv } from "@/lib/format/csv";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { SearchInput } from "@/components/hr/search-input";
-import { StatusBadge } from "@/components/hr/status-badge";
-import { EmptyState } from "@/components/hr/empty-state";
+import { PageHeader } from "@/components/layout/page-header";
+import { SearchInput } from "@/components/shared/search-input";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DataTablePagination,
   paginate,
-} from "@/components/hr/data-table-pagination";
+} from "@/components/shared/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +42,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DeleteButton } from "@/components/shared/delete-button";
+import { errorText } from "@/lib/format/error-text";
+import { formatDate } from "@/lib/format/date";
 
 type Employee = {
   id: string;
@@ -71,6 +75,7 @@ const emptyForm = {
   email: "",
   phone: "",
   dateOfJoining: "",
+  dateOfBirth: "",
   departmentId: NONE,
   designationId: NONE,
   locationId: NONE,
@@ -112,7 +117,7 @@ export default function EmployeesPage() {
       const query = params.toString();
       const response = await fetch(`/api/employees${query ? `?${query}` : ""}`);
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch employees");
+      if (!response.ok) throw new Error(errorText(data.error, "Failed to fetch employees"));
       setEmployees(Array.isArray(data) ? data : []);
       setPage(1);
     } catch (err) {
@@ -147,6 +152,7 @@ export default function EmployeesPage() {
           email: form.email.trim(),
           phone: form.phone.trim() || null,
           dateOfJoining: form.dateOfJoining || null,
+          dateOfBirth: form.dateOfBirth || null,
           departmentId: form.departmentId === NONE ? null : form.departmentId,
           designationId:
             form.designationId === NONE ? null : form.designationId,
@@ -155,7 +161,7 @@ export default function EmployeesPage() {
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to create employee");
+      if (!response.ok) throw new Error(errorText(data.error, "Failed to create employee"));
       setShowAddForm(false);
       setForm(emptyForm);
       toast.success("Employee added");
@@ -184,15 +190,38 @@ export default function EmployeesPage() {
         title="Employees"
         description="Manage your organisation's employees."
         action={
-          <Button
-            onClick={() => {
-              setShowAddForm(true);
-              setError("");
-            }}
-          >
-            <PlusIcon />
-            Add Employee
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              disabled={employees.length === 0}
+              onClick={() =>
+                downloadCsv(
+                  `employees-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ["Code", "Name", "Email", "Phone", "Joined", "Status"],
+                  employees.map((e) => [
+                    e.employeeCode,
+                    nameOf(e),
+                    e.email,
+                    e.phone,
+                    e.dateOfJoining ? e.dateOfJoining.slice(0, 10) : "",
+                    e.status,
+                  ]),
+                )
+              }
+            >
+              <DownloadIcon />
+              Export CSV
+            </Button>
+            <Button
+              onClick={() => {
+                setShowAddForm(true);
+                setError("");
+              }}
+            >
+              <PlusIcon />
+              Add Employee
+            </Button>
+          </>
         }
       />
 
@@ -291,13 +320,13 @@ export default function EmployeesPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {employee.dateOfJoining
-                        ? new Date(employee.dateOfJoining).toLocaleDateString()
+                        ? formatDate(employee.dateOfJoining)
                         : "—"}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={employee.status} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
@@ -305,6 +334,13 @@ export default function EmployeesPage() {
                       >
                         View Profile
                       </Button>
+                      <DeleteButton
+                        url={`/api/employees/${employee.id}`}
+                        itemName={nameOf(employee)}
+                        title={`Delete ${nameOf(employee)}?`}
+                        description="This permanently removes the employee together with their attendance, leave, payroll and payslip records. Mark them inactive instead if you only want them out of day-to-day lists."
+                        onDeleted={loadEmployees}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -335,8 +371,10 @@ export default function EmployeesPage() {
             className="grid gap-4 md:grid-cols-2"
           >
             <div>
-              <Label className="mb-1.5">Employee Code *</Label>
+              <Label htmlFor="emp-code" className="mb-1.5">Employee Code *</Label>
               <Input
+                id="emp-code"
+                maxLength={30}
                 required
                 placeholder="EMP001"
                 value={form.employeeCode}
@@ -347,8 +385,10 @@ export default function EmployeesPage() {
             </div>
 
             <div>
-              <Label className="mb-1.5">First Name *</Label>
+              <Label htmlFor="emp-first" className="mb-1.5">First Name *</Label>
               <Input
+                id="emp-first"
+                maxLength={80} autoComplete="given-name"
                 required
                 placeholder="First Name"
                 value={form.firstName}
@@ -359,8 +399,10 @@ export default function EmployeesPage() {
             </div>
 
             <div>
-              <Label className="mb-1.5">Last Name</Label>
+              <Label htmlFor="emp-last" className="mb-1.5">Last Name</Label>
               <Input
+                id="emp-last"
+                maxLength={80} autoComplete="family-name"
                 placeholder="Last Name"
                 value={form.lastName}
                 onChange={(e) =>
@@ -370,8 +412,10 @@ export default function EmployeesPage() {
             </div>
 
             <div>
-              <Label className="mb-1.5">Email *</Label>
+              <Label htmlFor="emp-email" className="mb-1.5">Email *</Label>
               <Input
+                id="emp-email"
+                maxLength={200} autoComplete="email"
                 required
                 type="email"
                 placeholder="Email"
@@ -381,8 +425,10 @@ export default function EmployeesPage() {
             </div>
 
             <div>
-              <Label className="mb-1.5">Phone</Label>
+              <Label htmlFor="emp-phone" className="mb-1.5">Phone</Label>
               <Input
+                id="emp-phone"
+                type="tel" inputMode="tel" maxLength={20} pattern="\+?[0-9][0-9 ()\-]{6,19}" title="7 to 20 digits; spaces, +, - and brackets allowed" autoComplete="tel"
                 placeholder="Phone"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -390,12 +436,26 @@ export default function EmployeesPage() {
             </div>
 
             <div>
-              <Label className="mb-1.5">Date of Joining</Label>
+              <Label htmlFor="emp-join" className="mb-1.5">Date of Joining</Label>
               <Input
+                id="emp-join"
                 type="date"
                 value={form.dateOfJoining}
                 onChange={(e) =>
                   setForm({ ...form, dateOfJoining: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="emp-dob" className="mb-1.5">Date of Birth</Label>
+              <Input
+                id="emp-dob"
+                max={new Date().toISOString().slice(0, 10)}
+                type="date"
+                value={form.dateOfBirth}
+                onChange={(e) =>
+                  setForm({ ...form, dateOfBirth: e.target.value })
                 }
               />
             </div>

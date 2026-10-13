@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { RouteTabs } from "@/components/hr/route-tabs";
+import { RouteTabs } from "@/components/layout/route-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -1,11 +1,11 @@
 
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { logAudit } from "@/lib/audit";
-import { companyUpdateSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/domain/audit";
+import { companyUpdateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {

@@ -13,10 +13,12 @@ import {
   Users,
 } from "lucide-react";
 
-import { PageHeader } from "@/components/hr/page-header";
-import { StatCard } from "@/components/hr/stat-card";
+import { PageHeader } from "@/components/layout/page-header";
+import { StatCard } from "@/components/shared/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatINR } from "@/lib/format/currency";
+import { errorText } from "@/lib/format/error-text";
 
 type ReportData = {
   employees: {
@@ -57,7 +59,7 @@ export default function ReportsPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "Failed to load report");
+          throw new Error(errorText(data.error, "Failed to load report"));
         }
 
         setReport(data);
@@ -202,7 +204,7 @@ export default function ReportsPage() {
 
                     <SummaryRow
                       label="Latest period net total"
-                      value={`₹${report.payroll.latestPeriodNetTotal}`}
+                      value={formatINR(report.payroll.latestPeriodNetTotal)}
                     />
                   </CardContent>
                 </Card>

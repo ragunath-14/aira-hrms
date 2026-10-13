@@ -2,8 +2,8 @@
 # Docs: https://render.com/docs/blueprint-spec
 #
 # Deploy: Render Dashboard -> New -> Blueprint -> pick this repo. Render reads
-# this file, creates the service, and prompts for the secrets marked
-# `sync: false` below.
+# this file, creates the service, and prompts for the values marked
+# `sync: false` below (your database URL and the first admin login).
 #
 # The database is NOT created here. The app talks to Postgres through
 # @neondatabase/serverless (a WebSocket driver built for Neon), so keep using
@@ -12,8 +12,13 @@
 services:
   - type: web
     name: aira-hrms
+
     runtime: node
-    plan: starter # Pre-deploy commands (migrations) need a paid plan.
+
+    # "free" works for a demo but sleeps after ~15 minutes without traffic
+    # (the first request then takes a while) and has 512 MB of memory. Use
+    # "starter" or higher for real use: always on, more memory.
+    plan: free
 
     # Neon is hosted in AWS us-east-2 (Ohio); running in the same region keeps
     # the per-query round trip low. Change both if your Neon region differs.
@@ -22,16 +27,18 @@ services:
     branch: main
     autoDeployTrigger: commit
 
-    # drizzle-kit (migrations) and TypeScript/Tailwind (build) live in
-    # devDependencies, so install them explicitly.
-    buildCommand: npm ci --include=dev && npm run build
-
-    # Runs after a successful build and before the new version goes live; a
-    # failure aborts the deploy and keeps the old version serving.
-    #   db:migrate      applies pending schema migrations
-    #   db:seed:rbac    loads the roles/permissions reference rows (idempotent;
-    #                   does NOT create demo accounts)
-    preDeployCommand: npm run db:migrate && npm run db:seed:rbac
+    # Free plan does NOT support preDeployCommand, and has no Shell, so schema
+    # migrations, the roles/permissions seed and the first-admin bootstrap all
+    # run at the end of the build step. Env vars (including DATABASE_URL) are
+    # available during the build phase on Render. If any step fails, the build
+    # fails and the previous version keeps serving.
+    #   db:migrate          applies pending schema migrations (idempotent)
+    #   db:seed:rbac        loads roles/permissions reference rows (idempotent;
+    #                       creates NO demo accounts)
+    #   db:bootstrap-admin  creates the platform owner from ADMIN_EMAIL and
+    #                       ADMIN_PASSWORD if they are set (idempotent; an
+    #                       existing login is never changed); skipped otherwise
+    buildCommand: npm ci --include=dev && npm run db:migrate && npm run db:seed:rbac && npm run db:bootstrap-admin && npm run build
 
     # Bind to all interfaces; Render supplies PORT.
     startCommand: npm start -- -H 0.0.0.0
@@ -43,10 +50,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: NODE_ENV
+        value: production
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
 
-      # Neon POOLED connection string (host contains "-pooler").
+      # Neon POOLED connection string (host contains "-pooler") ending in
+      # ?sslmode=require. The app refuses to start without TLS.
       - key: DATABASE_URL
         sync: false
 
@@ -54,6 +64,30 @@ services:
       # stable across deploys (changing it logs everyone out).
       - key: BETTER_AUTH_SECRET
         generateValue: true
+
+      # First platform owner. This account signs in at /admin, creates each
+      # company and gives its owner a login. Use a long passphrase (12+
+      # characters). It is stored hashed; after the first successful deploy
+      # you can delete ADMIN_PASSWORD from the Environment tab (changing it
+      # later does NOT change an existing login; use "Set owner password" on
+      # /admin or reset it in the database).
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_NAME
+        sync: false
+
+      # Keep Neon's compute awake with a repeating ping. Off by default so it
+      # does not burn Neon's free compute hours around the clock; set to "true"
+      # if you prefer faster first requests over Neon usage.
+      - key: DB_KEEP_WARM
+        value: "false"
+
+      # Optional: video room server for meetings and calls. Defaults to the
+      # free public Jitsi service. Set to your own Jitsi server (https only):
+      #   - key: MEETING_BASE_URL
+      #     value: https://meet.yourcompany.com
 
       # BETTER_AUTH_URL is intentionally not declared: the app falls back to
       # RENDER_EXTERNAL_URL (the service's own onrender.com address, which

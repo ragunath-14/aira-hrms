@@ -1,10 +1,10 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { employees, leavePlans } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
+import { getCurrentTenant } from "@/lib/auth/authorization";
 
 export async function DELETE(
   request: Request,

@@ -1,40 +1,54 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { employees } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
+import { departments, designations, locations } from "@/db/schema/organization";
+import { employees } from "@/db/schema/employees";
+import { getOrCreateCurrentEmployee } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const result = await getOrCreateCurrentEmployee(request);
 
-    if (!context) {
+    if (!result) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 },
       );
     }
 
-    const { user, tenant } = context;
+    const { employee, tenant } = result;
 
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.userId, user.id),
-          eq(employees.tenantId, tenant.id),
-        ),
-      )
-      .limit(1);
+    const nameOf = async (
+      table: typeof departments | typeof designations | typeof locations,
+      id: string | null,
+    ) => {
+      if (!id) return null;
+      const [row] = await db
+        .select({ name: table.name })
+        .from(table)
+        .where(eq(table.id, id))
+        .limit(1);
+      return row?.name ?? null;
+    };
 
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Employee record not found" },
-        { status: 404 },
-      );
-    }
+    const managerOf = async (id: string | null) => {
+      if (!id) return null;
+      const [row] = await db
+        .select({ firstName: employees.firstName, lastName: employees.lastName })
+        .from(employees)
+        .where(eq(employees.id, id))
+        .limit(1);
+      return row ? [row.firstName, row.lastName].filter(Boolean).join(" ") : null;
+    };
+
+    const [departmentName, designationName, locationName, managerName] =
+      await Promise.all([
+        nameOf(departments, employee.departmentId),
+        nameOf(designations, employee.designationId),
+        nameOf(locations, employee.locationId),
+        managerOf(employee.managerId),
+      ]);
 
     return NextResponse.json({
       id: employee.id,
@@ -49,6 +63,11 @@ export async function GET(request: Request) {
       locationId: employee.locationId,
       managerId: employee.managerId,
       status: employee.status,
+      companyName: tenant.name,
+      departmentName,
+      designationName,
+      locationName,
+      managerName,
     });
   } catch (error) {
     console.error("GET employee profile error:", error);

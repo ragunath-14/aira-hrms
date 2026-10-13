@@ -7,7 +7,7 @@ import {
   leaveRequests,
   leaveTypes,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
+import { getCurrentTenant } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {

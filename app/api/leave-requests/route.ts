@@ -1,6 +1,9 @@
-import { isUuid } from "@/lib/ids";
-import { and, eq, gte, lte } from "drizzle-orm";
-import { requireRole } from "@/lib/authorization";
+import { isUuid } from "@/lib/validation/ids";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { requireRole } from "@/lib/auth/authorization";
+import { ensureLeaveBalances } from "@/lib/domain/leave-balances";
+import { countLeaveDays } from "@/lib/domain/leave-days";
+import { resolveSettings } from "@/lib/config/settings";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
@@ -10,26 +13,20 @@ import {
 } from "@/db/schema/leaves";
 import { employees } from "@/db/schema/employees";
 import { notifications } from "@/db/schema/notifications";
-import { logAudit } from "@/lib/audit";
-import { leaveRequestCreateSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/domain/audit";
+import { leaveRequestCreateSchema } from "@/lib/validation/schemas";
 
-function calculateDays(startDate: string, endDate: string) {
-  const start = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return null;
-  }
-
-  if (end < start) {
-    return null;
-  }
-
+function daysFromToday(dateStr: string) {
+  const target = new Date(`${dateStr}T00:00:00Z`);
+  const now = new Date();
+  const todayUTC = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
   const millisecondsPerDay = 1000 * 60 * 60 * 24;
 
-  return (
-    Math.floor((end.getTime() - start.getTime()) / millisecondsPerDay) + 1
-  );
+  return Math.round((target.getTime() - todayUTC) / millisecondsPerDay);
 }
 
 export async function GET(request: Request) {
@@ -178,11 +175,23 @@ export async function POST(request: Request) {
 
     const { leaveTypeId, startDate, endDate, reason } = parsed.data;
 
-    const totalDays = calculateDays(startDate, endDate);
+    const totalDays = await countLeaveDays(
+      auth.tenant.id,
+      startDate,
+      endDate,
+      resolveSettings(auth.tenant.settings),
+    );
 
-    if (!totalDays) {
+    if (totalDays === null) {
       return Response.json(
         { error: "Invalid leave date range" },
+        { status: 400 },
+      );
+    }
+
+    if (totalDays === 0) {
+      return Response.json(
+        { error: "The selected dates are all weekends or holidays, so no leave is needed" },
         { status: 400 },
       );
     }
@@ -224,20 +233,64 @@ export async function POST(request: Request) {
       );
     }
 
+    const notice = daysFromToday(startDate);
+
+    if (notice < 0) {
+      return Response.json(
+        { error: "Leave start date cannot be in the past" },
+        { status: 400 },
+      );
+    }
+
+    if (
+      leaveType.minNoticeDays != null &&
+      notice < leaveType.minNoticeDays
+    ) {
+      return Response.json(
+        {
+          error: `${leaveType.name} requires at least ${leaveType.minNoticeDays} day(s) notice`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (
+      leaveType.maxConsecutiveDays != null &&
+      totalDays > leaveType.maxConsecutiveDays
+    ) {
+      return Response.json(
+        {
+          error: `${leaveType.name} cannot be taken for more than ${leaveType.maxConsecutiveDays} consecutive day(s)`,
+        },
+        { status: 400 },
+      );
+    }
+
     const year = new Date(startDate).getUTCFullYear();
 
-    const [balance] = await db
-      .select()
-      .from(leaveBalances)
-      .where(
-        and(
-          eq(leaveBalances.tenantId, auth.tenant.id),
-          eq(leaveBalances.employeeId, employee.id),
-          eq(leaveBalances.leaveTypeId, leaveTypeId),
-          eq(leaveBalances.year, year),
-        ),
-      )
-      .limit(1);
+    const findBalance = async () =>
+      (
+        await db
+          .select()
+          .from(leaveBalances)
+          .where(
+            and(
+              eq(leaveBalances.tenantId, auth.tenant.id),
+              eq(leaveBalances.employeeId, employee.id),
+              eq(leaveBalances.leaveTypeId, leaveTypeId),
+              eq(leaveBalances.year, year),
+            ),
+          )
+          .limit(1)
+      )[0];
+
+    let balance = await findBalance();
+
+    if (!balance) {
+      // New joiners and new years get their allowance automatically.
+      await ensureLeaveBalances(auth.tenant.id, employee.id, year);
+      balance = await findBalance();
+    }
 
     if (!balance) {
       return Response.json(
@@ -262,14 +315,14 @@ export async function POST(request: Request) {
           eq(leaveRequests.employeeId, employee.id),
           lte(leaveRequests.startDate, endDate),
           gte(leaveRequests.endDate, startDate),
-          eq(leaveRequests.status, "approved"),
+          inArray(leaveRequests.status, ["approved", "pending"]),
         ),
       )
       .limit(1);
 
     if (overlapping) {
       return Response.json(
-        { error: "Leave dates overlap with an approved leave" },
+        { error: "These dates overlap with another approved or pending leave request" },
         { status: 409 },
       );
     }

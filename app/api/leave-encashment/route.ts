@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { leaveEncashmentRequests, leaveTypes } from "@/db/schema";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
   try {

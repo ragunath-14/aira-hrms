@@ -1,6 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/authorization";
+import { isUuid } from "@/lib/validation/ids";
+import { zodMessage } from "@/lib/format/error-text";
+import { performanceReviewSchema } from "@/lib/validation/schemas";
+import { logAudit } from "@/lib/domain/audit";
+import { requireRole } from "@/lib/auth/authorization";
 import { db } from "@/db";
 import {
   employees,
@@ -61,25 +65,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
+    const parsed = performanceReviewSchema.safeParse(await request.json());
 
-    const {
-      employeeId,
-      reviewPeriod,
-      rating,
-      comments,
-      status,
-    } = body;
-
-    if (!employeeId || !reviewPeriod) {
+    if (!parsed.success) {
       return NextResponse.json(
-        {
-          error:
-            "employeeId and reviewPeriod are required",
-        },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
       );
     }
+
+    const { employeeId, reviewPeriod, rating, comments, status } = parsed.data;
 
     const [employee] = await db
       .select({
@@ -115,6 +110,14 @@ export async function POST(request: Request) {
         status: status || "draft",
       })
       .returning();
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "performance_review_created",
+      entity: "performance_review",
+      entityId: review.id,
+    });
 
     return NextResponse.json(review, {
       status: 201,
@@ -162,6 +165,16 @@ export async function PATCH(request: Request) {
       );
     }
 
+    if (
+      rating != null &&
+      (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5)
+    ) {
+      return NextResponse.json(
+        { error: "Rating must be between 1 and 5" },
+        { status: 400 },
+      );
+    }
+
     const [updatedReview] = await db
       .update(performanceReviews)
       .set({
@@ -199,5 +212,36 @@ export async function PATCH(request: Request) {
       { error: "Failed to update performance review" },
       { status: 500 },
     );
+  }
+}
+
+
+export async function DELETE(request: Request) {
+  try {
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
+
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const id = new URL(request.url).searchParams.get("id");
+
+    if (!id || !isUuid(id)) {
+      return NextResponse.json({ error: "A valid id query param is required" }, { status: 400 });
+    }
+
+    const [deleted] = await db
+      .delete(performanceReviews)
+      .where(and(eq(performanceReviews.id, id), eq(performanceReviews.tenantId, auth.tenant.id)))
+      .returning({ id: performanceReviews.id });
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Review DELETE error:", error);
+    return NextResponse.json({ error: "Failed to delete review" }, { status: 500 });
   }
 }

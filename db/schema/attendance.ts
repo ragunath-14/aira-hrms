@@ -49,6 +49,14 @@ export const attendance = pgTable(
 
     notes: text("notes"),
 
+    // Where the person is working today: "office" or "remote".
+    workMode: text("work_mode").notNull().default("office"),
+
+    // Live status shown on the Workplace page: "lunch", "break" or "away"
+    // until breakUntil passes (then they count as working again).
+    breakType: text("break_type"),
+    breakUntil: timestamp("break_until"),
+
     createdAt: timestamp("created_at")
       .defaultNow()
       .notNull(),

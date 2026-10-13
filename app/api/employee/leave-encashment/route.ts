@@ -9,8 +9,8 @@ import {
   leaveTypes,
   notifications,
 } from "@/db/schema";
-import { getCurrentTenant } from "@/lib/authorization";
-import { leaveEncashmentCreateSchema } from "@/lib/validations";
+import { getCurrentTenant } from "@/lib/auth/authorization";
+import { leaveEncashmentCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
   try {

@@ -1,11 +1,11 @@
-import { isUuid } from "@/lib/ids";
+import { isUuid } from "@/lib/validation/ids";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { employeeDocuments } from "@/db/schema/employee-documents";
 import { employees } from "@/db/schema/employees";
-import { requireRole } from "@/lib/authorization";
+import { requireRole } from "@/lib/auth/authorization";
 
 export async function GET(
   request: Request,

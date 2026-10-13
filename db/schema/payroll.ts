@@ -7,6 +7,7 @@ import {
   timestamp,
   unique,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -173,6 +174,7 @@ export const payrollRecords = pgTable("payroll_records", {
 }, (table) => [
   index("payroll_records_tenant_id_idx").on(table.tenantId),
   index("payroll_records_employee_id_idx").on(table.employeeId),
+  uniqueIndex("payroll_records_employee_period_uidx").on(table.tenantId, table.employeeId, table.payrollPeriod),
 ]);
 
 export const payrollItems = pgTable("payroll_items", {
@@ -274,4 +276,5 @@ export const payslips = pgTable("payslips", {
 }, (table) => [
   index("payslips_tenant_id_idx").on(table.tenantId),
   index("payslips_employee_id_idx").on(table.employeeId),
+  uniqueIndex("payslips_record_uidx").on(table.payrollRecordId),
 ]);

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
 import { tenants } from "@/db/schema/tenants";
 import { users } from "@/db/schema/users";
-import { auth } from "@/lib/auth";
+import { auth } from "@/lib/auth/server";
 
 export async function GET(request: Request) {
   try {

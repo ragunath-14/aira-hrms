@@ -2,12 +2,12 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
-import { employees } from "@/db/schema/employees";
-import { getCurrentTenant } from "@/lib/authorization";
+import { getOrCreateCurrentEmployee } from "@/lib/auth/authorization";
+import { dateInZone, resolveSettings } from "@/lib/config/settings";
 
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const context = await getOrCreateCurrentEmployee(request);
 
     if (!context) {
       return Response.json(
@@ -16,27 +16,10 @@ export async function GET(request: Request) {
       );
     }
 
-    const { tenant, user } = context;
+    const { tenant, employee } = context;
 
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.tenantId, tenant.id),
-          eq(employees.userId, user.id),
-        ),
-      )
-      .limit(1);
-
-    if (!employee) {
-      return Response.json(
-        { error: "Employee not found" },
-        { status: 404 },
-      );
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
+    // "Today" is the company-timezone date, the same one check-in records.
+    const today = dateInZone(new Date(), resolveSettings(tenant.settings).timezone);
 
     const [record] = await db
       .select()

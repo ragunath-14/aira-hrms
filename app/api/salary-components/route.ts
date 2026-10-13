@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/authorization";
+import { zodMessage } from "@/lib/format/error-text";
+import { salaryComponentSchema } from "@/lib/validation/schemas";
+import { logAudit } from "@/lib/domain/audit";
+import { requireRole } from "@/lib/auth/authorization";
 import { db } from "@/db";
 import { salaryComponents } from "@/db/schema";
 
@@ -58,37 +61,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
+    const parsed = salaryComponentSchema.safeParse(await request.json());
 
-    const {
-      name,
-      type,
-      amount,
-    } = body;
-
-    if (
-      !name?.trim() ||
-      !type?.trim() ||
-      amount === undefined
-    ) {
+    if (!parsed.success) {
       return NextResponse.json(
-        {
-          error:
-            "name, type and amount are required",
-        },
+        { error: zodMessage(parsed.error) },
         { status: 400 },
       );
     }
+
+    const { name, type, amount } = parsed.data;
 
     const [component] = await db
       .insert(salaryComponents)
       .values({
         tenantId: auth.tenant.id,
-        name: name.trim(),
-        type: type.trim(),
+        name,
+        type,
         amount: String(amount),
       })
       .returning();
+
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "salary_component_created",
+      entity: "salary_component",
+      entityId: component.id,
+    });
 
     return NextResponse.json(component, {
       status: 201,

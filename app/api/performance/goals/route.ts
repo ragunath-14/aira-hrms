@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/authorization";
+import { isUuid } from "@/lib/validation/ids";
+import { requireRole } from "@/lib/auth/authorization";
 import { db } from "@/db";
 import {
   employees,
@@ -93,12 +94,26 @@ export async function POST(request: Request) {
       status,
     } = body;
 
-    if (!employeeId || !title) {
+    if (!employeeId || typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
         {
           error:
             "employeeId and title are required",
         },
+        { status: 400 },
+      );
+    }
+
+    if (title.trim().length > 150) {
+      return NextResponse.json(
+        { error: "Goal title must be at most 150 characters" },
+        { status: 400 },
+      );
+    }
+
+    if (description != null && (typeof description !== "string" || description.length > 1000)) {
+      return NextResponse.json(
+        { error: "Description must be text of at most 1000 characters" },
         { status: 400 },
       );
     }
@@ -143,8 +158,8 @@ export async function POST(request: Request) {
       .values({
         tenantId: auth.tenant.id,
         employeeId,
-        title,
-        description: description ?? null,
+        title: title.trim(),
+        description: description?.trim() || null,
         status: status || "active",
       })
       .returning();
@@ -278,5 +293,36 @@ export async function PATCH(request: Request) {
       { error: "Failed to update performance goal" },
       { status: 500 },
     );
+  }
+}
+
+
+export async function DELETE(request: Request) {
+  try {
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
+
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const id = new URL(request.url).searchParams.get("id");
+
+    if (!id || !isUuid(id)) {
+      return NextResponse.json({ error: "A valid id query param is required" }, { status: 400 });
+    }
+
+    const [deleted] = await db
+      .delete(performanceGoals)
+      .where(and(eq(performanceGoals.id, id), eq(performanceGoals.tenantId, auth.tenant.id)))
+      .returning({ id: performanceGoals.id });
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Goal not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Goal DELETE error:", error);
+    return NextResponse.json({ error: "Failed to delete goal" }, { status: 500 });
   }
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckIcon, XIcon } from "lucide-react";
 
-import { PageHeader } from "@/components/hr/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { errorText } from "@/lib/format/error-text";
 
 type PermissionInfo = {
   key: string;
@@ -37,6 +38,18 @@ const ROLE_COLORS: Record<string, string> = {
   member: "bg-gray-100 text-gray-800 border-gray-200",
 };
 
+// For these roles the permission applies to the person's own records only
+// (their own attendance, leave, payslips and reviews), not the whole company.
+const OWN_DATA_ROLES = new Set(["employee", "member"]);
+const OWN_DATA_PERMISSIONS = new Set([
+  "attendance:manage",
+  "leave:manage",
+  "payroll:read",
+  "performance:read",
+  "attendance:read",
+  "leave:read",
+]);
+
 function categoryOf(permissionKey: string) {
   const prefix = permissionKey.split(":")[0];
   return prefix.charAt(0).toUpperCase() + prefix.slice(1);
@@ -58,7 +71,7 @@ export default function RolesPermissionsPage() {
         const response = await fetch("/api/roles");
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.error || "Failed to fetch roles");
+          throw new Error(errorText(data.error, "Failed to fetch roles"));
         }
         setRoles(data.roles ?? []);
         setPermissionsList(data.permissions ?? []);
@@ -115,9 +128,9 @@ export default function RolesPermissionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {categories.map((category) => (
+              {categories.flatMap((category) => [
                 <TableRow
-                  key={category}
+                  key={`header-${category}`}
                   className="bg-muted/50 hover:bg-muted/50"
                 >
                   <TableCell
@@ -126,11 +139,9 @@ export default function RolesPermissionsPage() {
                   >
                     {category} Management
                   </TableCell>
-                </TableRow>
-              ))}
-              {categories.flatMap((cat) =>
-                permissionsList
-                  .filter((p) => categoryOf(p.key) === cat)
+                </TableRow>,
+                ...permissionsList
+                  .filter((p) => categoryOf(p.key) === category)
                   .map((perm) => (
                     <TableRow key={perm.key}>
                       <TableCell className="whitespace-normal">
@@ -145,21 +156,35 @@ export default function RolesPermissionsPage() {
                       </TableCell>
                       {roles.map((role) => {
                         const allowed = role.permissions.includes(perm.key);
+                        const ownOnly =
+                          allowed &&
+                          OWN_DATA_ROLES.has(role.key) &&
+                          OWN_DATA_PERMISSIONS.has(perm.key);
+
                         return (
                           <TableCell key={role.key} className="text-center">
-                            {allowed ? (
+                            {ownOnly ? (
+                              <Badge
+                                variant="secondary"
+                                className="bg-sky-100 text-sky-800"
+                              >
+                                Own only
+                              </Badge>
+                            ) : allowed ? (
                               <Badge
                                 variant="default"
                                 className="h-6 w-6 justify-center rounded-full bg-emerald-100 p-0 text-emerald-800"
                               >
-                                <CheckIcon className="size-4" />
+                                <CheckIcon className="size-4" aria-hidden />
+                                <span className="sr-only">Allowed</span>
                               </Badge>
                             ) : (
                               <Badge
                                 variant="secondary"
                                 className="h-6 w-6 justify-center rounded-full bg-muted p-0 text-muted-foreground"
                               >
-                                <XIcon className="size-3.5" />
+                                <XIcon className="size-3.5" aria-hidden />
+                                <span className="sr-only">Not allowed</span>
                               </Badge>
                             )}
                           </TableCell>
@@ -167,7 +192,7 @@ export default function RolesPermissionsPage() {
                       })}
                     </TableRow>
                   )),
-              )}
+              ])}
             </TableBody>
           </Table>
         )}
