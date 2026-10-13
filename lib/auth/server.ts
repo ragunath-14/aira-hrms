@@ -51,7 +51,15 @@ export const auth = betterAuth({
     // Always send the Secure flag in production (cookies are HttpOnly and
     // SameSite=Lax by default).
     useSecureCookies: process.env.NODE_ENV === "production",
-    ipAddress: { ipAddressHeaders: ["x-forwarded-for", "x-real-ip"] },
+    // Rate limits are per visitor, so the visitor's address must be read from
+    // a header the platform sets. Better Auth only trusts a header holding a
+    // single address; Render's X-Forwarded-For carries several, so every
+    // visitor would share one bucket. Render sits behind Cloudflare, which
+    // sets the single-value cf-connecting-ip. Behind a different proxy, set
+    // CLIENT_IP_HEADER to the header it uses (e.g. x-real-ip).
+    ipAddress: {
+      ipAddressHeaders: [process.env.CLIENT_IP_HEADER || "cf-connecting-ip"],
+    },
   },
 
   session: {
