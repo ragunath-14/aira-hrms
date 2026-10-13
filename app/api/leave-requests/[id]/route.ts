@@ -10,6 +10,7 @@ import {
 import { employees } from "@/db/schema/employees";
 import { notifications } from "@/db/schema/notifications";
 import { logAudit } from "@/lib/domain/audit";
+import { createNotification } from "@/lib/domain/notifications";
 
 export async function PATCH(
   request: Request,
@@ -166,7 +167,7 @@ export async function PATCH(
 
       await Promise.all([
         employee?.userId
-          ? db.insert(notifications).values({
+          ? createNotification({
               tenantId:
                 auth.tenant.id,
               userId:
@@ -174,7 +175,6 @@ export async function PATCH(
               type: "leave_rejected",
               title: "Leave Request Rejected",
               message: `Your leave request from ${leaveRequest.startDate} to ${leaveRequest.endDate} was rejected.${body.comment?.trim() ? ` Comment: ${body.comment.trim()}` : ""}`,
-              isRead: false,
             })
           : Promise.resolve(),
         logAudit({
@@ -319,7 +319,7 @@ export async function PATCH(
 
     await Promise.all([
       employeeForNotification?.userId
-        ? db.insert(notifications).values({
+        ? createNotification({
             tenantId:
               auth.tenant.id,
             userId:
@@ -327,7 +327,6 @@ export async function PATCH(
             type: "leave_approved",
             title: "Leave Request Approved",
             message: `Your leave request from ${leaveRequest.startDate} to ${leaveRequest.endDate} has been approved.`,
-            isRead: false,
           })
         : Promise.resolve(),
       logAudit({

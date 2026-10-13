@@ -1,7 +1,10 @@
 import { betterAuth } from "better-auth";
+import { twoFactor } from "better-auth/plugins";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
 import { db } from "@/db";
+import { sendEmail } from "@/lib/email/mailer";
+import { passwordChangedEmail, passwordResetEmail } from "@/lib/email/templates";
 import * as schema from "@/db/schema/auth";
 
 export const auth = betterAuth({
@@ -11,6 +14,11 @@ export const auth = betterAuth({
   }),
 
   secret: process.env.BETTER_AUTH_SECRET,
+
+  // Two-factor sign-in with an authenticator app (Google Authenticator,
+  // Microsoft Authenticator, Authy ...) plus one-time recovery codes. The
+  // secret and the codes are stored encrypted.
+  plugins: [twoFactor({ issuer: "AIRA HRMS" })],
 
   // RENDER_EXTERNAL_URL is injected by Render, so a fresh deployment works
   // before a custom domain (and BETTER_AUTH_URL) is configured.
@@ -29,6 +37,19 @@ export const auth = betterAuth({
     // table, never in plain text.
     minPasswordLength: 12,
     maxPasswordLength: 128,
+
+    // "Forgot password": the link is emailed (see lib/email/mailer.ts) and is
+    // valid for one hour. Resetting signs the person out everywhere.
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      // Not awaited: the response must not reveal, through timing, whether an
+      // email address has an account.
+      void sendEmail({ to: user.email, ...passwordResetEmail(user.name, url) });
+    },
+    onPasswordReset: async ({ user }) => {
+      void sendEmail({ to: user.email, ...passwordChangedEmail(user.name) });
+    },
   },
 
   // Brute-force protection (always on in production). Counters are kept in
@@ -41,9 +62,12 @@ export const auth = betterAuth({
     customRules: {
       "/sign-in/email": { window: 60, max: 5 },
       "/sign-up/email": { window: 3600, max: 10 },
+      "/request-password-reset": { window: 3600, max: 5 },
       "/forget-password": { window: 3600, max: 5 },
-      "/reset-password": { window: 3600, max: 5 },
+      "/reset-password": { window: 3600, max: 10 },
       "/change-password": { window: 3600, max: 10 },
+      "/two-factor/verify-totp": { window: 60, max: 10 },
+      "/two-factor/verify-backup-code": { window: 60, max: 10 },
     },
   },
 

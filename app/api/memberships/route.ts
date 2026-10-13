@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
         email: users.email,
         role: memberships.role,
         createdAt: memberships.createdAt,
+        twoFactor: sql<boolean>`coalesce((select au.two_factor_enabled from "user" au where lower(au.email) = lower(${users.email}) limit 1), false)`,
       })
       .from(memberships)
       .innerJoin(users, eq(memberships.userId, users.id))

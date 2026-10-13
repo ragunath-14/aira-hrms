@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { KeyRoundIcon, PlusIcon, UsersIcon } from "lucide-react";
+import { KeyRoundIcon, PlusIcon, ShieldOffIcon, UsersIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -50,6 +50,7 @@ type Member = {
   email: string;
   role: string;
   createdAt: string;
+  twoFactor?: boolean;
 };
 
 const PAGE_SIZE = 10;
@@ -85,6 +86,7 @@ export default function UsersSettingsPage() {
   // Loading indicator for row level operations
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
+  const [twoFactorTarget, setTwoFactorTarget] = useState<Member | null>(null);
 
   async function loadMembers() {
     try {
@@ -110,6 +112,27 @@ export default function UsersSettingsPage() {
       .then((d) => setMyRole(d?.membership?.role ?? ""))
       .catch(() => {});
   }, []);
+
+  async function handleResetTwoFactor() {
+    const target = twoFactorTarget;
+    if (!target) return;
+
+    setTwoFactorTarget(null);
+
+    try {
+      const res = await fetch(`/api/memberships/${target.id}/two-factor/reset`, { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed to reset two-factor sign-in");
+      }
+
+      toast.success(`Two-factor sign-in removed for ${target.email}`);
+      setMembers((current) => current.map((m) => (m.id === target.id ? { ...m, twoFactor: false } : m)));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset two-factor sign-in");
+    }
+  }
 
   async function handleSetPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -410,6 +433,11 @@ export default function UsersSettingsPage() {
                           <KeyRoundIcon /> Set password
                         </Button>
                       )}
+                      {member.twoFactor && canSetPassword(myRole, member.role) && (
+                        <Button variant="outline" size="sm" onClick={() => setTwoFactorTarget(member)}>
+                          <ShieldOffIcon /> Reset 2FA
+                        </Button>
+                      )}
                       {member.role !== "owner" && (
                         <Button
                           variant="destructive"
@@ -566,6 +594,22 @@ export default function UsersSettingsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!twoFactorTarget}
+        onOpenChange={(open) => {
+          if (!open) setTwoFactorTarget(null);
+        }}
+        title="Reset two-factor sign-in?"
+        description={
+          twoFactorTarget
+            ? `${twoFactorTarget.email} will be signed out everywhere and can sign in with just their password until they set up two-factor again. Use this when they lost their phone and recovery codes.`
+            : undefined
+        }
+        confirmLabel="Reset 2FA"
+        destructive={false}
+        onConfirm={handleResetTwoFactor}
+      />
 
       <ConfirmDialog
         open={!!memberToRemove}

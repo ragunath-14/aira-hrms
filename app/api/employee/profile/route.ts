@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const { employee, tenant } = result;
+    const { employee, tenant, membership } = result;
 
     const nameOf = async (
       table: typeof departments | typeof designations | typeof locations,
@@ -64,6 +64,7 @@ export async function GET(request: Request) {
       managerId: employee.managerId,
       status: employee.status,
       companyName: tenant.name,
+      role: membership.role,
       departmentName,
       designationName,
       locationName,

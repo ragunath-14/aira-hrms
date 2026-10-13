@@ -318,12 +318,22 @@ export default function PayrollPage() {
                           <p className="text-sm text-muted-foreground">
                             Payroll Period
                           </p>
+                          <span className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            render={<a href={`/api/payslips/${payslip.id}/pdf`} download />}
+                            aria-label={`Download payslip for ${payslip.payrollPeriod}`}
+                          >
+                            <DownloadIcon /> PDF
+                          </Button>
                           <DeleteButton
                             url={`/api/payslips/${payslip.id}`}
                             itemName="payslip"
                             description="Only the payslip is removed; the payroll record stays."
                             onDeleted={loadPayroll}
                           />
+                          </span>
                         </div>
 
                         <p className="mt-1 font-semibold text-foreground">

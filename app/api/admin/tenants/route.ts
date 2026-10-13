@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { tenants } from "@/db/schema/tenants";
@@ -39,6 +39,7 @@ export async function GET(request: Request) {
         note: tenants.accessNote,
         ownerName: users.name,
         ownerEmail: users.email,
+        ownerTwoFactor: sql<boolean>`coalesce((select au.two_factor_enabled from "user" au where lower(au.email) = lower(${users.email}) limit 1), false)`,
         phone: tenants.phone,
         city: tenants.city,
         state: tenants.state,

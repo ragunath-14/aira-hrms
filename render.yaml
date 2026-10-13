@@ -87,6 +87,20 @@ services:
       - key: DB_KEEP_WARM
         value: "false"
 
+      # Optional: outgoing email (password reset, leave / payroll / meeting
+      # notices, security alerts). Use any SMTP provider. Without SMTP_HOST and
+      # SMTP_FROM the app still works; it just does not send email.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+
       # Optional: video room server for meetings and calls. Defaults to the
       # free public Jitsi service. Set to your own Jitsi server (https only):
       #   - key: MEETING_BASE_URL

@@ -12,6 +12,8 @@ export type EmployeeProfile = {
   dateOfJoining: string | null;
   status: string;
   companyName: string;
+  // The signed-in person's company role (owner, admin, hr, manager, employee...).
+  role: string;
   departmentName: string | null;
   designationName: string | null;
   locationName: string | null;

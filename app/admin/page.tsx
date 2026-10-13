@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckIcon, KeyRoundIcon, PlusIcon, ShieldCheckIcon, XIcon } from "lucide-react";
+import { CheckIcon, KeyRoundIcon, PlusIcon, ShieldCheckIcon, ShieldOffIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth/client";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChangePasswordDialog } from "@/components/shared/change-password-dialog";
+import { TwoFactorDialog } from "@/components/shared/two-factor-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
@@ -48,6 +49,7 @@ type AccessRequest = {
   note: string | null;
   ownerName: string | null;
   ownerEmail: string | null;
+  ownerTwoFactor: boolean;
   phone: string | null;
   city: string | null;
   state: string | null;
@@ -100,6 +102,7 @@ export default function AccessRequestsPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [myPasswordOpen, setMyPasswordOpen] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
   const [company, setCompany] = useState(EMPTY_COMPANY);
   const [pwTarget, setPwTarget] = useState<AccessRequest | null>(null);
   const [newPw, setNewPw] = useState("");
@@ -212,6 +215,24 @@ export default function AccessRequestsPage() {
     }
   }
 
+  async function resetOwnerTwoFactor(request: AccessRequest) {
+    if (!window.confirm(`Remove two-factor sign-in for ${request.ownerEmail}? Use this when they lost their phone and recovery codes.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/tenants/${request.id}/two-factor/reset`, { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Failed to reset two-factor sign-in");
+
+      toast.success(`Two-factor sign-in removed for ${request.ownerEmail}`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset two-factor sign-in");
+    }
+  }
+
   async function submitOwnerPassword(e: React.FormEvent) {
     e.preventDefault();
     if (!pwTarget) return;
@@ -261,6 +282,9 @@ export default function AccessRequestsPage() {
               </Button>
               <Button variant="outline" onClick={() => setMyPasswordOpen(true)}>
                 <KeyRoundIcon /> Change my password
+              </Button>
+              <Button variant="outline" onClick={() => setTwoFactorOpen(true)}>
+                <ShieldCheckIcon /> Two-factor
               </Button>
               <Button variant="outline" onClick={handleLogout}>
                 Sign out
@@ -355,6 +379,16 @@ export default function AccessRequestsPage() {
                         >
                           <KeyRoundIcon /> Set owner password
                         </Button>
+                        {request.ownerTwoFactor && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="ml-2"
+                            onClick={() => resetOwnerTwoFactor(request)}
+                          >
+                            <ShieldOffIcon /> Reset 2FA
+                          </Button>
+                        )}
                         {request.status !== "approved" && (
                           <Button
                             size="sm"
@@ -442,6 +476,7 @@ export default function AccessRequestsPage() {
         </DialogContent>
       </Dialog>
       <ChangePasswordDialog open={myPasswordOpen} onOpenChange={setMyPasswordOpen} />
+      <TwoFactorDialog open={twoFactorOpen} onOpenChange={setTwoFactorOpen} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">

@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BellIcon, ChevronDownIcon, KeyRoundIcon, LogOutIcon, UserIcon } from "lucide-react";
+import { BellIcon, ChevronDownIcon, KeyRoundIcon, LayoutDashboardIcon, LogOutIcon, ShieldCheckIcon, UserIcon } from "lucide-react";
 
 import { ChangePasswordDialog } from "@/components/shared/change-password-dialog";
+import { TwoFactorDialog } from "@/components/shared/two-factor-dialog";
 import { WorkspaceNav } from "@/components/layout/workspace-nav";
 import { WorkspaceSearch } from "@/components/layout/workspace-search";
 import {
@@ -49,6 +50,9 @@ const NAV_SECTIONS = [
   { href: "/employee/profile", label: "My Profile" },
 ];
 
+// Roles that also have the HR console (everyone except plain employees).
+const CONSOLE_ROLES = ["owner", "admin", "hr", "manager"];
+
 // Shown in the nav bar; "My Profile" is reached from the profile card and menu.
 const NAV_TABS = NAV_SECTIONS.filter((s) => s.href !== "/employee/profile");
 
@@ -63,6 +67,7 @@ export default function EmployeeShell({
   const [unreadCount, setUnreadCount] = useState(0);
 
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
   const displayVersion = useDisplayPrefs();
   const pathnameForTitle = usePathname();
   const section = NAV_SECTIONS.filter(
@@ -166,6 +171,7 @@ export default function EmployeeShell({
   const initials =
     `${employee.firstName[0] ?? ""}${employee.lastName?.[0] ?? ""}`.toUpperCase();
   const fullName = `${employee.firstName}${employee.lastName ? ` ${employee.lastName}` : ""}`;
+  const hasConsole = CONSOLE_ROLES.includes(employee.role);
 
   return (
     <EmployeeContext.Provider value={{ employee, reload: loadProfile, unreadCount }}>
@@ -192,6 +198,18 @@ export default function EmployeeShell({
             </div>
 
             <div className="ml-auto flex shrink-0 items-center gap-3 md:ml-0">
+              {hasConsole && (
+                <Link
+                  href="/"
+                  title="Leave My Workspace and go back to the HR console"
+                  className="inline-flex h-9 items-center gap-2 rounded-full border bg-card px-3.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+                >
+                  <LayoutDashboardIcon className="size-4 text-primary" />
+                  <span className="hidden sm:inline">HR Console</span>
+                  <span className="sr-only sm:hidden">HR Console</span>
+                </Link>
+              )}
+
               <Link
                 href="/employee/notifications"
                 aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
@@ -249,6 +267,12 @@ export default function EmployeeShell({
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
+                  {hasConsole && (
+                    <DropdownMenuItem onClick={() => router.push("/")}>
+                      <LayoutDashboardIcon />
+                      Back to HR console
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => router.push("/employee/profile")}>
                     <UserIcon />
                     My profile
@@ -256,6 +280,10 @@ export default function EmployeeShell({
                   <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
                     <KeyRoundIcon />
                     Change password
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTwoFactorOpen(true)}>
+                    <ShieldCheckIcon />
+                    Two-factor sign-in
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
@@ -287,6 +315,7 @@ export default function EmployeeShell({
         </header>
 
         <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+        <TwoFactorDialog open={twoFactorOpen} onOpenChange={setTwoFactorOpen} />
 
         <main key={displayVersion} className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-[1400px]">{children}</div>

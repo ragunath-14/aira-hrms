@@ -77,7 +77,8 @@ export const config = {
      * - favicon.ico (favicon file)
      * - login (login page)
      * - signup (signup page)
+     * - forgot-password, reset-password (password recovery pages)
      */
-    "/((?!_next/static|_next/image|favicon.ico|login|signup).*)",
+    "/((?!_next/static|_next/image|favicon.ico|login|signup|forgot-password|reset-password).*)",
   ],
 };

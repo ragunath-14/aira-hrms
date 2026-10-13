@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BanknoteIcon } from "lucide-react";
+import { BanknoteIcon, DownloadIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -76,6 +77,7 @@ export default function EmployeePayslipsPage() {
                 <TableHead>Allowances</TableHead>
                 <TableHead>Deductions</TableHead>
                 <TableHead>Net Salary</TableHead>
+                <TableHead className="text-right">Payslip</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -93,6 +95,16 @@ export default function EmployeePayslipsPage() {
                   </TableCell>
                   <TableCell className="font-bold text-foreground">
                     {formatINR(ps.netSalary)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      render={<a href={`/api/employee/payslips/${ps.id}/pdf`} download />}
+                      aria-label={`Download payslip for ${ps.payrollPeriod}`}
+                    >
+                      <DownloadIcon /> PDF
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

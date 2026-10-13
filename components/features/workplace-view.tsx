@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { MeetingsPanel } from "@/components/features/meetings-panel";
 import { ScheduleMeetingDialog } from "@/components/features/schedule-meeting-dialog";
 import { Button } from "@/components/ui/button";
+import { clampPage, paginate } from "@/components/shared/data-table-pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDisplayPrefs } from "@/lib/format/date";
 import { cn } from "cn";
@@ -64,6 +65,9 @@ function initialsOf(name: string) {
     .join("");
 }
 
+// People shown per column before paging.
+const PAGE_SIZE = 6;
+
 const BREAK_LABEL: Record<string, string> = { lunch: "lunch", break: "a break", away: "away" };
 
 // Where the quick links go: the employee workspace or the HR console.
@@ -82,6 +86,7 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
   const [data, setData] = useState<Payload | null>(null);
   const [department, setDepartment] = useState<string>("");
   const [query, setQuery] = useState("");
+  const [pages, setPages] = useState({ in: 1, away: 1, leave: 1 });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -131,6 +136,10 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
   const atWork = visible.filter((m) => m.state === "in");
   const away = visible.filter((m) => m.state === "out" || m.state === "away");
   const onLeave = visible.filter((m) => m.state === "leave");
+
+  const shownAtWork = paginate(atWork, pages.in, PAGE_SIZE);
+  const shownAway = paginate(away, pages.away, PAGE_SIZE);
+  const shownOnLeave = paginate(onLeave, pages.leave, PAGE_SIZE);
 
   const me = data?.members.find((m) => m.isYou);
 
@@ -395,6 +404,7 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
             value={selected}
             onChange={(e) => {
               setData(null);
+              setPages({ in: 1, away: 1, leave: 1 });
               setDepartment(e.target.value);
             }}
           >
@@ -427,25 +437,28 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
           placeholder="Search for department members"
           className="h-12 w-full rounded-xl border bg-card pl-12 pr-4 text-base shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPages({ in: 1, away: 1, leave: 1 });
+          }}
         />
       </div>
 
       {/* Columns */}
       <div className="grid items-start gap-6 lg:grid-cols-3">
-        <Column title="At Work" count={atWork.length} tag="In" tagClass="text-emerald-600">
+        <Column title="At Work" count={atWork.length} tag="In" tagClass="text-emerald-600" page={pages.in} onPage={(n) => setPages({ ...pages, in: n })}>
           {atWork.length === 0 ? (
             <Empty text={query ? "No matches." : "Nobody has checked in yet."} />
           ) : (
-            atWork.map((m) => <Person key={m.id} m={m} line={statusLine(m)} onCall={() => startMeeting([m.id])} />)
+            shownAtWork.map((m) => <Person key={m.id} m={m} line={statusLine(m)} onCall={() => startMeeting([m.id])} />)
           )}
         </Column>
 
-        <Column title="Away" count={away.length} tag="Out" tagClass="text-muted-foreground">
+        <Column title="Away" count={away.length} tag="Out" tagClass="text-muted-foreground" page={pages.away} onPage={(n) => setPages({ ...pages, away: n })}>
           {away.length === 0 ? (
             <Empty text={query ? "No matches." : "Everyone is at work."} />
           ) : (
-            away.map((m) => <Person key={m.id} m={m} line={statusLine(m)} onCall={() => startMeeting([m.id])} />)
+            shownAway.map((m) => <Person key={m.id} m={m} line={statusLine(m)} onCall={() => startMeeting([m.id])} />)
           )}
         </Column>
 
@@ -454,6 +467,8 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
           count={onLeave.length}
           tag="Today"
           tagClass="text-sky-600"
+          page={pages.leave}
+          onPage={(n) => setPages({ ...pages, leave: n })}
           footer={
             <Link href={links.planner} className="font-semibold underline decoration-dashed underline-offset-4">
               {portal === "hr" ? "View leave requests" : "View leave planner"}
@@ -463,7 +478,7 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
           {onLeave.length === 0 ? (
             <Empty text={query ? "No matches." : "Nobody is on leave today."} />
           ) : (
-            onLeave.map((m) => <Person key={m.id} m={m} line={statusLine(m)} onCall={() => startMeeting([m.id])} />)
+            shownOnLeave.map((m) => <Person key={m.id} m={m} line={statusLine(m)} onCall={() => startMeeting([m.id])} />)
           )}
         </Column>
       </div>
@@ -485,6 +500,8 @@ function Column({
   tag,
   tagClass,
   footer,
+  page,
+  onPage,
   children,
 }: {
   title: string;
@@ -492,8 +509,14 @@ function Column({
   tag: string;
   tagClass: string;
   footer?: React.ReactNode;
+  page: number;
+  onPage: (page: number) => void;
   children: React.ReactNode;
 }) {
+  const current = clampPage(page, count, PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+  const from = count === 0 ? 0 : (current - 1) * PAGE_SIZE + 1;
+  const to = Math.min(current * PAGE_SIZE, count);
   return (
     <section className="flex min-h-96 flex-col">
       <h2 className="mb-3 px-1 text-xl font-bold text-foreground">
@@ -505,6 +528,27 @@ function Column({
           <span className="text-muted-foreground"> • {count}</span>
         </div>
         <ul className="flex-1 divide-y">{children}</ul>
+        {count > PAGE_SIZE && (
+          <nav
+            aria-label={`${title} pages`}
+            className="flex items-center justify-between border-t px-5 py-2.5 text-sm text-muted-foreground"
+          >
+            <span>
+              {from}-{to} of {count}
+            </span>
+            <span className="flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={current <= 1} onClick={() => onPage(current - 1)}>
+                Previous
+              </Button>
+              <span className="tabular-nums">
+                {current} / {totalPages}
+              </span>
+              <Button size="sm" variant="outline" disabled={current >= totalPages} onClick={() => onPage(current + 1)}>
+                Next
+              </Button>
+            </span>
+          </nav>
+        )}
         {footer && (
           <div className="border-t bg-muted/60 px-5 py-3 text-center text-sm">{footer}</div>
         )}

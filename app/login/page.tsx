@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CheckIcon, LockIcon, ShieldCheckIcon, UsersIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -17,32 +18,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [twoFactorStep, setTwoFactorStep] = useState(false);
+  const [code, setCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-
-    setMessage("Signing in...");
-
+  // After the password (and the authenticator code, if required) are accepted:
+  // set up the HRMS user and go to the right home page.
+  async function finishLogin() {
     try {
-      // 1. Sign in
-      const response = await fetch("/api/auth/sign-in/email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setMessage(data?.message ?? "Login failed");
-        return;
-      }
-
       // 2. Sync HRMS user
       const syncResponse = await fetch("/api/users/sync", {
         method: "POST",
@@ -121,6 +104,71 @@ export default function LoginPage() {
     }
   }
 
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage("Checking code...");
+
+    try {
+      const response = await fetch(
+        useBackupCode ? "/api/auth/two-factor/verify-backup-code" : "/api/auth/two-factor/verify-totp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: code.trim() }),
+        },
+      );
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setMessage(data?.message ?? "That code is not valid");
+        return;
+      }
+
+      await finishLogin();
+    } catch {
+      setMessage("Something went wrong. Please try again.");
+    }
+  }
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+
+    setMessage("Signing in...");
+
+    try {
+      // 1. Sign in
+      const response = await fetch("/api/auth/sign-in/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data?.message ?? "Login failed");
+        return;
+      }
+
+      if (data?.twoFactorRedirect) {
+        // Password accepted; this person also needs their authenticator code.
+        setTwoFactorStep(true);
+        setMessage("");
+        return;
+      }
+
+      await finishLogin();
+    } catch (error) {
+      console.error("Login error:", error);
+      setMessage("Something went wrong during login");
+    }
+  }
+
   return (
     <main className="flex min-h-screen">
       {/* Left brand panel */}
@@ -188,7 +236,63 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          {twoFactorStep ? (
+            <form onSubmit={handleVerifyCode} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="login-code">
+                  {useBackupCode ? "Recovery code" : "Authenticator code"}
+                </Label>
+                <Input
+                  id="login-code"
+                  inputMode={useBackupCode ? "text" : "numeric"}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  placeholder={useBackupCode ? "xxxxx-xxxxx" : "6-digit code"}
+                  maxLength={useBackupCode ? 24 : 6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  {useBackupCode
+                    ? "Enter one of the recovery codes you saved. Each works once."
+                    : "Open your authenticator app and enter the current 6-digit code."}
+                </p>
+              </div>
+
+              <Button type="submit" className="w-full">
+                Verify and sign in
+              </Button>
+
+              <p className="flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => {
+                    setUseBackupCode(!useBackupCode);
+                    setCode("");
+                    setMessage("");
+                  }}
+                >
+                  {useBackupCode ? "Use authenticator code" : "Use a recovery code"}
+                </button>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:underline"
+                  onClick={() => {
+                    setTwoFactorStep(false);
+                    setUseBackupCode(false);
+                    setCode("");
+                    setPassword("");
+                    setMessage("");
+                  }}
+                >
+                  Back
+                </button>
+              </p>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="login-email">Email</Label>
               <Input
@@ -218,7 +322,14 @@ export default function LoginPage() {
             <Button type="submit" className="w-full">
               Login
             </Button>
+
+            <p className="text-center text-sm">
+              <Link href="/forgot-password" className="text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </p>
           </form>
+          )}
 
           {message && (
             <p className="text-center text-sm text-muted-foreground">

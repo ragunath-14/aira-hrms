@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronsUpDownIcon, KeyRoundIcon, LockIcon, LogOutIcon } from "lucide-react";
+import { ChevronsUpDownIcon, KeyRoundIcon, LockIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
 import { ChangePasswordDialog } from "@/components/shared/change-password-dialog";
+import { TwoFactorDialog } from "@/components/shared/two-factor-dialog";
 import { authClient } from "@/lib/auth/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -256,6 +257,7 @@ export default function Sidebar({
   }, []);
 
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
 
   async function handleLogout() {
     await authClient.signOut();
@@ -367,6 +369,10 @@ export default function Sidebar({
               <KeyRoundIcon />
               Change password
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTwoFactorOpen(true)}>
+              <ShieldCheckIcon />
+              Two-factor sign-in
+            </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={handleLogout}>
               <LogOutIcon />
               Sign out
@@ -380,6 +386,7 @@ export default function Sidebar({
         </p>
 
         <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+        <TwoFactorDialog open={twoFactorOpen} onOpenChange={setTwoFactorOpen} />
       </div>
     </aside>
     </>

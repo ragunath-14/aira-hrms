@@ -14,6 +14,7 @@ import {
 import { employees } from "@/db/schema/employees";
 import { notifications } from "@/db/schema/notifications";
 import { logAudit } from "@/lib/domain/audit";
+import { createNotification } from "@/lib/domain/notifications";
 import { leaveRequestCreateSchema } from "@/lib/validation/schemas";
 
 function daysFromToday(dateStr: string) {
@@ -355,13 +356,12 @@ export async function POST(request: Request) {
         .limit(1);
 
       if (manager?.userId) {
-        await db.insert(notifications).values({
+        await createNotification({
           tenantId: auth.tenant.id,
           userId: manager.userId,
           type: "leave_submitted",
           title: "New Leave Request",
           message: `${employee.firstName} ${employee.lastName} submitted a ${leaveType.name} request from ${startDate} to ${endDate}.`,
-          isRead: false,
         });
       }
     }

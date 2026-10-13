@@ -1,5 +1,9 @@
 import { createLocalAccountIssuer } from "@better-auth/core/db";
 
+import { eq, sql } from "drizzle-orm";
+
+import { db } from "@/db";
+import { twoFactor, user as authUsers } from "@/db/schema/auth";
 import { auth } from "@/lib/auth/server";
 import type { Role } from "@/lib/auth/permissions";
 
@@ -62,4 +66,27 @@ export async function setLoginPassword(params: {
 
   await ctx.internalAdapter.deleteUserSessions(found.user.id);
   return !hasCredential;
+}
+
+
+// For someone who lost their authenticator app and recovery codes: removes their
+// two-factor secret so they can sign in with just their password again (and
+// set it up afresh), and signs them out everywhere. Returns false when the
+// person has no login.
+export async function resetTwoFactor(email: string) {
+  const [login] = await db
+    .select({ id: authUsers.id })
+    .from(authUsers)
+    .where(sql`lower(${authUsers.email}) = ${email.toLowerCase()}`)
+    .limit(1);
+
+  if (!login) return false;
+
+  await db.delete(twoFactor).where(eq(twoFactor.userId, login.id));
+  await db.update(authUsers).set({ twoFactorEnabled: false }).where(eq(authUsers.id, login.id));
+
+  const ctx = await auth.$context;
+  await ctx.internalAdapter.deleteUserSessions(login.id);
+
+  return true;
 }

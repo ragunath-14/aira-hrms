@@ -169,6 +169,7 @@ Copy `.env.example` to `.env.local` and fill in:
 | `DATABASE_URL` | Postgres connection string from your Neon project (Dashboard → Connection Details). Use the **pooled** connection string (host contains `-pooler`). |
 | `BETTER_AUTH_SECRET` | Secret Better Auth uses to sign sessions/cookies. Generate one with `openssl rand -base64 32`. |
 | `BETTER_AUTH_URL` | Base URL Better Auth uses to build callback/redirect URLs. `http://localhost:3000` locally; your deployed URL in production. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | Optional. Outgoing email (see [Email, password reset and two-factor sign-in](#email-password-reset-and-two-factor-sign-in)). Email stays off until `SMTP_HOST` and `SMTP_FROM` are set. |
 
 ## Local installation
 
@@ -426,6 +427,8 @@ otherwise only has a placeholder connection string.
   (`app/api/payroll/route.ts`), and membership role changes
   (`app/api/memberships/[id]/route.ts`). Other domains (attendance,
   performance, organization changes, etc.) don't yet raise notifications.
+  Leave, payroll, meeting and security notices are also emailed when SMTP is
+  configured.
 - **No production deployment yet.** This project has not been deployed as
   of this writing — there is no live URL.
 
@@ -485,3 +488,40 @@ that service; anyone with a room link can join, so room names are long and
 random. Set `MEETING_BASE_URL` to your own Jitsi server to keep calls in-house.
 Meeting data (title, time, invitees, room name) is stored in the `meetings` and
 `meeting_attendees` tables.
+
+## Email, password reset and two-factor sign-in
+
+**Email** (`lib/email/`). Set `SMTP_HOST` and `SMTP_FROM` (plus `SMTP_PORT`,
+`SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` as your provider needs) and the app
+sends mail through any SMTP service. Without them nothing is sent (outside
+production the message is printed to the server log, which is handy locally).
+Sending never blocks or fails the action that triggered it. What is emailed:
+
+- password-reset links and a "your password was changed" alert (always);
+- meeting invites, calls and cancellations, and the two-factor-reset alert
+  (always);
+- leave submitted / approved / rejected and payroll generated, which follow the
+  company's switches in **Settings -> System -> Notifications**.
+
+**Forgot password** (`/forgot-password`, `/reset-password`). The login page
+links to it; if email is not configured the page says so and points people to their
+administrator. The link is valid for one hour, works
+once, and resetting signs the user out of every device. The answer is the same
+whether or not the address has an account, so it cannot be used to discover who
+has one.
+
+**Payslip PDF.** Each payslip has a **PDF** button: employees download their own
+(*My Workspace -> Payslips*), and owner / admin / HR download anyone's from
+*Payroll*. The PDF is an A4 statement with earnings, deductions, net pay in
+figures and words, generated on demand (`lib/domain/payslip-pdf.ts`); employees
+can only fetch their own.
+
+**Two-factor sign-in (TOTP).** Anyone can switch it on from their account menu
+(*Two-factor sign-in*): confirm the password, scan the QR code in an
+authenticator app (Google Authenticator, Microsoft Authenticator, Authy, ...),
+enter the 6-digit code, and save the ten one-time recovery codes. Sign-in then
+asks for a code after the password. If someone loses their phone and their
+recovery codes, their manager can use **Reset 2FA** (Settings -> Users; the
+platform owner does this for company owners on `/admin`). That removes the
+second step, signs the person out everywhere, emails them and is recorded in
+the audit log. It needs migration `0025_two_factor` (`npm run db:migrate`).
