@@ -20,9 +20,11 @@ services:
     # "starter" or higher for real use: always on, more memory.
     plan: free
 
-    # Neon is hosted in AWS us-east-2 (Ohio); running in the same region keeps
-    # the per-query round trip low. Change both if your Neon region differs.
-    region: ohio
+    # Your Neon database is in AWS ap-southeast-1 (Singapore); running in the
+    # same region keeps the per-query round trip low. If your Neon project is
+    # elsewhere, pick the nearest Render region (oregon, ohio, virginia,
+    # frankfurt or singapore).
+    region: singapore
 
     branch: main
     autoDeployTrigger: commit

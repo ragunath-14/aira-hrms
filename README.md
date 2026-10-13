@@ -289,14 +289,27 @@ Notes:
   around the clock). It is off by default in production.
 - The database stays on Neon: the app uses `@neondatabase/serverless`, which
   is built for Neon and is not a drop-in for a Render Postgres instance.
-  `region: ohio` matches Neon's us-east-2; change both together if your Neon
-  project is elsewhere, since each query pays the network round trip.
+  `region: singapore` matches Neon's ap-southeast-1; change both together if
+  your Neon project is elsewhere, since each query pays the network round trip.
 - Video meetings use the free public Jitsi service unless you set
   `MEETING_BASE_URL` (see "Video meetings and calls").
 - Do **not** run `npm run db:seed` against a production database: it creates
   demo accounts that all share a publicly documented password.
 - Render's disk is not persistent: the app stores no files locally (documents
   are links), so nothing is lost on redeploy.
+
+Troubleshooting a failed build:
+
+- **`Cannot find module '@tailwindcss/postcss'`** (or `typescript`, `tsx`):
+  Render installed production packages only. Everything the build and the
+  database scripts need is listed under `dependencies`, so a current checkout
+  builds either way. If you created the service by hand instead of from the
+  Blueprint, set its **Build Command** to:
+  `npm ci --include=dev && npm run db:migrate && npm run db:seed:rbac && npm run db:bootstrap-admin && npm run build`
+  (the default `npm install; npm run build` would skip migrations and the
+  admin bootstrap) and its **Start Command** to `npm start -- -H 0.0.0.0`.
+- **Server exits right after the build** with "Refusing to start...": a
+  required variable is missing or unsafe (see "Production safety checks").
 
 As of this writing, no production deployment has been made: there is no
 live URL for this project yet.
