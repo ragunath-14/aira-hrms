@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, jsonb, integer } from "drizzle-orm/pg-core";
 
 export const tenants = pgTable("tenants", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -33,6 +33,17 @@ export const tenants = pgTable("tenants", {
   accessReviewedBy: uuid("access_reviewed_by"),
 
   accessNote: text("access_note"),
+
+  // Subscription plan. The plan names a set of default limits (lib/config/plans.ts);
+  // the three overrides below let the platform owner give one company different
+  // limits. Null means "use the plan's value".
+  plan: text("plan").notNull().default("starter"),
+
+  planEmployeeLimit: integer("plan_employee_limit"),
+
+  planStorageMb: integer("plan_storage_mb"),
+
+  planExpiresAt: timestamp("plan_expires_at"),
 
   settings: jsonb("settings")
     .$type<Record<string, unknown>>()

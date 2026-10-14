@@ -8,6 +8,7 @@ import {
   unique,
   index,
   uniqueIndex,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -160,6 +161,18 @@ export const payrollRecords = pgTable("payroll_records", {
     scale: 2,
   }).notNull(),
 
+  // Statutory figures. total_deductions already includes the employee's share
+  // of PF, ESI, professional tax and TDS; these columns keep the breakdown and
+  // the employer's own contributions for the monthly statutory report.
+  pfWage: numeric("pf_wage", { precision: 12, scale: 2 }).notNull().default("0"),
+  pfEmployee: numeric("pf_employee", { precision: 12, scale: 2 }).notNull().default("0"),
+  pfEmployer: numeric("pf_employer", { precision: 12, scale: 2 }).notNull().default("0"),
+  esiWage: numeric("esi_wage", { precision: 12, scale: 2 }).notNull().default("0"),
+  esiEmployee: numeric("esi_employee", { precision: 12, scale: 2 }).notNull().default("0"),
+  esiEmployer: numeric("esi_employer", { precision: 12, scale: 2 }).notNull().default("0"),
+  professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  tds: numeric("tds", { precision: 12, scale: 2 }).notNull().default("0"),
+
   status: text("status")
     .notNull()
     .default("processed"),
@@ -277,4 +290,41 @@ export const payslips = pgTable("payslips", {
   index("payslips_tenant_id_idx").on(table.tenantId),
   index("payslips_employee_id_idx").on(table.employeeId),
   uniqueIndex("payslips_record_uidx").on(table.payrollRecordId),
+]);
+
+// Per-employee statutory details: identifiers for the PF / ESI returns, which
+// schemes apply to them, and the income-tax regime used for TDS.
+export const employeeStatutory = pgTable("employee_statutory", {
+  id: uuid("id").defaultRandom().primaryKey(),
+
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+
+  employeeId: uuid("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+
+  pan: text("pan"),
+  uan: text("uan"),
+  esiNumber: text("esi_number"),
+
+  pfApplicable: boolean("pf_applicable").notNull().default(true),
+  esiApplicable: boolean("esi_applicable").notNull().default(true),
+  ptApplicable: boolean("pt_applicable").notNull().default(true),
+
+  // "new" or "old" income-tax regime.
+  taxRegime: text("tax_regime").notNull().default("new"),
+
+  // Old regime only: yearly investments and deductions the employee declared
+  // (80C, 80D, HRA exemption, ...). PF and professional tax are added on top.
+  declaredDeductions: numeric("declared_deductions", { precision: 12, scale: 2 })
+    .notNull()
+    .default("0"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("employee_statutory_tenant_id_idx").on(table.tenantId),
+  uniqueIndex("employee_statutory_employee_uidx").on(table.tenantId, table.employeeId),
 ]);

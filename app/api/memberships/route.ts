@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth/authorization";
 import { ROLES, type Role } from "@/lib/auth/permissions";
 import { canSetPasswordFor, setLoginPassword } from "@/lib/auth/credentials";
 import { logAudit } from "@/lib/domain/audit";
+import { checkCanAddPeople } from "@/lib/domain/plans";
 import { membershipCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
@@ -104,6 +105,12 @@ export async function POST(request: Request) {
         { error: "You cannot set a password for this role" },
         { status: 403 },
       );
+    }
+
+    const planProblem = await checkCanAddPeople(authResult.tenant);
+
+    if (planProblem) {
+      return NextResponse.json({ error: planProblem }, { status: 402 });
     }
 
     let user;

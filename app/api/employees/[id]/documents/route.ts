@@ -1,206 +1,178 @@
-import { isUuid } from "@/lib/validation/ids";
-import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { employeeDocuments } from "@/db/schema/employee-documents";
 import { employees } from "@/db/schema/employees";
 import { requireRole } from "@/lib/auth/authorization";
+import { logAudit } from "@/lib/domain/audit";
+import {
+  listDocuments,
+  storeLinkDocument,
+  storeUploadedDocument,
+  validLinkUrl,
+} from "@/lib/domain/document-store";
+import { DOCUMENT_TYPE_IDS, documentView, parseUpload } from "@/lib/domain/documents";
+import { createNotification } from "@/lib/domain/notifications";
+import { isUuid } from "@/lib/validation/ids";
 
-export async function GET(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  try {
-    const auth = await requireRole(request, [
-      "owner",
-      "admin",
-      "hr",
-      "manager",
-    ]);
-    const roleCheck = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
+type Ctx = { params: Promise<{ id: string }> };
 
-if (!roleCheck.authorized) {
-  return NextResponse.json(
-    { error: roleCheck.error },
-    { status: roleCheck.status },
-  );
+async function findEmployee(tenantId: string, id: string) {
+  const [employee] = await db
+    .select({ id: employees.id, userId: employees.userId })
+    .from(employees)
+    .where(and(eq(employees.id, id), eq(employees.tenantId, tenantId)))
+    .limit(1);
+
+  return employee ?? null;
 }
 
+// Documents can hold ID proofs and contracts, so only owner, admin and HR see
+// everything here. (Managers are deliberately not included.)
+export async function GET(request: Request, { params }: Ctx) {
+  try {
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
+
     if (!auth.authorized) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status },
-      );
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { id } = await context.params;
-    if (!isUuid(id)) {
-      return Response.json({ error: "Invalid id" }, { status: 400 });
+    const { id } = await params;
+    if (!isUuid(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+
+    if (!(await findEmployee(auth.tenant.id, id))) {
+      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
 
-    // Verify employee belongs to this tenant
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.id, id),
-          eq(employees.tenantId, auth.tenant.id),
-        ),
-      )
-      .limit(1);
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Employee not found" },
-        { status: 404 },
-      );
-    }
-
-    const docs = await db
-      .select()
-      .from(employeeDocuments)
-      .where(
-        and(
-          eq(employeeDocuments.employeeId, id),
-          eq(employeeDocuments.tenantId, auth.tenant.id),
-        ),
-      );
-
-    return NextResponse.json(docs);
+    return NextResponse.json(
+      await listDocuments({ tenantId: auth.tenant.id, employeeId: id, viewer: { kind: "hr" } }),
+    );
   } catch (error) {
     console.error("GET employee documents by id error:", error);
 
-    return NextResponse.json(
-      { error: "Failed to fetch employee documents" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch employee documents" }, { status: 500 });
   }
 }
 
-export async function POST(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
+// Upload a file (multipart: file, name, type, visibleToEmployee) or add a link
+// (JSON: name, url, type).
+export async function POST(request: Request, { params }: Ctx) {
   try {
-    const auth = await requireRole(request, [
-      "owner",
-      "admin",
-      "hr",
-    ]);
-const roleCheck = await requireRole(request, [
-  "owner",
-  "admin",
-  "hr",
-  "manager",
-  "employee",
-]);
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
 
-if (!roleCheck.authorized) {
-  return NextResponse.json(
-    { error: roleCheck.error },
-    { status: roleCheck.status },
-  );
-}
     if (!auth.authorized) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status },
-      );
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { id } = await context.params;
-    if (!isUuid(id)) {
-      return Response.json({ error: "Invalid id" }, { status: 400 });
-    }
+    const { id } = await params;
+    if (!isUuid(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-    // Verify employee belongs to this tenant
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.id, id),
-          eq(employees.tenantId, auth.tenant.id),
-        ),
-      )
-      .limit(1);
+    const employee = await findEmployee(auth.tenant.id, id);
 
     if (!employee) {
-      return NextResponse.json(
-        { error: "Employee not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
 
-    const body = await request.json();
+    let created;
+    let visible = true;
 
-    if (!body.name?.trim() || !body.url?.trim()) {
-      return NextResponse.json(
-        { error: "name and url are required" },
-        { status: 400 },
-      );
-    }
+    if ((request.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
+      const upload = await parseUpload(request);
 
-    const [doc] = await db
-      .insert(employeeDocuments)
-      .values({
+      if (!upload.ok) return upload.response;
+
+      visible = upload.visibleToEmployee;
+
+      const stored = await storeUploadedDocument({
+        tenant: auth.tenant,
+        employeeId: id,
+        uploadedBy: auth.user.id,
+        upload,
+        visibleToEmployee: visible,
+      });
+
+      if (stored.error) return stored.error;
+
+      created = stored.document;
+    } else {
+      const body = await request.json().catch(() => null);
+      const url = validLinkUrl(body?.url);
+      const name = typeof body?.name === "string" ? body.name.trim() : "";
+      const type = typeof body?.type === "string" && body.type ? body.type.trim() : null;
+
+      if (!name || name.length > 120) {
+        return NextResponse.json({ error: "Enter a document name" }, { status: 400 });
+      }
+
+      if (!url) {
+        return NextResponse.json(
+          { error: "Links must be full web addresses starting with http:// or https://" },
+          { status: 400 },
+        );
+      }
+
+      if (type && !DOCUMENT_TYPE_IDS.includes(type)) {
+        return NextResponse.json({ error: "Choose a document type from the list" }, { status: 400 });
+      }
+
+      visible = body?.visibleToEmployee !== false;
+
+      created = await storeLinkDocument({
         tenantId: auth.tenant.id,
         employeeId: id,
-        name: body.name.trim(),
-        type: body.type?.trim() ?? null,
-        url: body.url.trim(),
-      })
-      .returning();
+        uploadedBy: auth.user.id,
+        name,
+        type,
+        url,
+        visibleToEmployee: visible,
+      });
+    }
 
-    return NextResponse.json(doc, { status: 201 });
+    await logAudit({
+      tenantId: auth.tenant.id,
+      userId: auth.user.id,
+      action: "document_uploaded",
+      entity: "employee_document",
+      entityId: created.id,
+    });
+
+    if (visible && employee.userId && employee.userId !== auth.user.id) {
+      await createNotification({
+        tenantId: auth.tenant.id,
+        userId: employee.userId,
+        type: "document_added",
+        title: "New document",
+        message: `"${created.name}" was added to your documents.`,
+        link: "/employee/documents",
+      });
+    }
+
+    return NextResponse.json({ ...documentView(created), canDelete: true }, { status: 201 });
   } catch (error) {
     console.error("POST employee document by id error:", error);
 
-    return NextResponse.json(
-      { error: "Failed to upload document" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to upload document" }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
+// Older clients delete through here with the document id in the path and the
+// employee in the query string; the Documents tab now uses DELETE /api/documents/[id].
+export async function DELETE(request: Request, { params }: Ctx) {
   try {
-    const auth = await requireRole(request, [
-      "owner",
-      "admin",
-      "hr",
-    ]);
+    const auth = await requireRole(request, ["owner", "admin", "hr"]);
 
     if (!auth.authorized) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status },
-      );
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const { id: docId } = await context.params;
-    if (!isUuid(docId)) {
-      return Response.json({ error: "Invalid id" }, { status: 400 });
-    }
-    const { searchParams } = new URL(request.url);
-    const employeeId = searchParams.get("employeeId");
+    const { id: docId } = await params;
+    if (!isUuid(docId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+
+    const employeeId = new URL(request.url).searchParams.get("employeeId");
 
     if (!employeeId || !isUuid(employeeId)) {
-      return NextResponse.json(
-        { error: "A valid employeeId query param is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "A valid employeeId query param is required" }, { status: 400 });
     }
 
     const deleted = await db
@@ -215,19 +187,13 @@ export async function DELETE(
       .returning({ id: employeeDocuments.id });
 
     if (deleted.length === 0) {
-      return NextResponse.json(
-        { error: "Document not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE employee document error:", error);
 
-    return NextResponse.json(
-      { error: "Failed to delete document" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to delete document" }, { status: 500 });
   }
 }

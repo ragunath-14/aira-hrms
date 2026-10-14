@@ -109,6 +109,11 @@ const payrollItems: NavItem[] = [
     href: "/payroll",
     icon: <WalletIcon />,
   },
+  {
+    label: "Statutory Report",
+    href: "/statutory-report",
+    icon: <ReportIcon />,
+  },
 ];
 
 const performanceItems: NavItem[] = [
@@ -179,6 +184,16 @@ const settingsItems: NavItem[] = [
     icon: <PerformanceIcon />,
   },
   {
+    label: "Payroll Compliance",
+    href: "/settings/payroll-compliance",
+    icon: <MoneyIcon />,
+  },
+  {
+    label: "Plan & Usage",
+    href: "/settings/plan",
+    icon: <HierarchyIcon />,
+  },
+  {
     label: "Audit Logs",
     href: "/settings/audit-logs",
     icon: <ReportIcon />,
@@ -212,7 +227,10 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Settings",
     items: settingsItems.map((i) => ({
       ...i,
-      roles: i.href === "/settings/audit-logs" ? ["owner", "admin"] : HR_ROLES,
+      roles:
+        i.href === "/settings/audit-logs" || i.href === "/settings/plan"
+          ? ["owner", "admin"]
+          : HR_ROLES,
     })),
   },
   { title: "My Workspace", items: workspaceItems },

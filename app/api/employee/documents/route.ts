@@ -1,98 +1,90 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
 
-import { db } from "@/db";
-import { employeeDocuments } from "@/db/schema/employee-documents";
-import { employees } from "@/db/schema/employees";
-import { getCurrentTenant } from "@/lib/auth/authorization";
+import { DOCUMENT_TYPE_IDS, documentView, parseUpload } from "@/lib/domain/documents";
+import {
+  listDocuments,
+  storeLinkDocument,
+  storeUploadedDocument,
+  validLinkUrl,
+} from "@/lib/domain/document-store";
+import { getActor, serverError, unauthorized } from "@/lib/domain/workplace";
 
+// My Workspace -> Documents. An employee sees what HR has shared with them and
+// what they uploaded themselves; documents HR marked HR-only stay hidden.
 export async function GET(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const actor = await getActor(request);
+    if (!actor) return unauthorized();
 
-    if (!context) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { user, tenant } = context;
-
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.tenantId, tenant.id),
-          eq(employees.userId, user.id),
-        ),
-      )
-      .limit(1);
-
-    if (!employee) {
-      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
-    }
-
-    const docs = await db
-      .select()
-      .from(employeeDocuments)
-      .where(
-        and(
-          eq(employeeDocuments.employeeId, employee.id),
-          eq(employeeDocuments.tenantId, tenant.id),
-        ),
-      );
-
-    return NextResponse.json(docs);
+    return NextResponse.json(
+      await listDocuments({
+        tenantId: actor.tenant.id,
+        employeeId: actor.employee.id,
+        viewer: { kind: "employee", userId: actor.user.id },
+      }),
+    );
   } catch (error) {
-    console.error("GET employee documents error:", error);
-    return NextResponse.json({ error: "Failed to fetch documents" }, { status: 500 });
+    return serverError("Documents load", error);
   }
 }
 
+// Upload a file (multipart: file, name, type) or add a link (JSON: name, url, type).
 export async function POST(request: Request) {
   try {
-    const context = await getCurrentTenant(request);
+    const actor = await getActor(request);
+    if (!actor) return unauthorized();
 
-    if (!context) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if ((request.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
+      const upload = await parseUpload(request);
+
+      if (!upload.ok) return upload.response;
+
+      const stored = await storeUploadedDocument({
+        tenant: actor.tenant,
+        employeeId: actor.employee.id,
+        uploadedBy: actor.user.id,
+        upload,
+        // Something you upload yourself is always yours to see.
+        visibleToEmployee: true,
+      });
+
+      if (stored.error) return stored.error;
+
+      return NextResponse.json({ ...documentView(stored.document), canDelete: true }, { status: 201 });
     }
 
-    const { user, tenant } = context;
+    const body = await request.json().catch(() => null);
+    const url = validLinkUrl(body?.url);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const type = typeof body?.type === "string" && body.type ? body.type.trim() : null;
 
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.tenantId, tenant.id),
-          eq(employees.userId, user.id),
-        ),
-      )
-      .limit(1);
-
-    if (!employee) {
-      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+    if (!name || name.length > 120) {
+      return NextResponse.json({ error: "Enter a document name" }, { status: 400 });
     }
 
-    const body = await request.json();
-
-    if (!body.name?.trim() || !body.url?.trim()) {
-      return NextResponse.json({ error: "name and url are required" }, { status: 400 });
+    if (!url) {
+      return NextResponse.json(
+        { error: "Links must be full web addresses starting with http:// or https://" },
+        { status: 400 },
+      );
     }
 
-    const [doc] = await db
-      .insert(employeeDocuments)
-      .values({
-        tenantId: tenant.id,
-        employeeId: employee.id,
-        name: body.name.trim(),
-        type: body.type?.trim() ?? null,
-        url: body.url.trim(),
-      })
-      .returning();
+    if (type && !DOCUMENT_TYPE_IDS.includes(type)) {
+      return NextResponse.json({ error: "Choose a document type from the list" }, { status: 400 });
+    }
 
-    return NextResponse.json(doc, { status: 201 });
+    const row = await storeLinkDocument({
+      tenantId: actor.tenant.id,
+      employeeId: actor.employee.id,
+      uploadedBy: actor.user.id,
+      name,
+      type,
+      url,
+      visibleToEmployee: true,
+    });
+
+    return NextResponse.json({ ...documentView(row), canDelete: true }, { status: 201 });
   } catch (error) {
-    console.error("POST employee document error:", error);
-    return NextResponse.json({ error: "Failed to upload document" }, { status: 500 });
+    return serverError("Document upload", error);
   }
 }

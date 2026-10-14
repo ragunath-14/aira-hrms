@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/sidebar";
+import { PlanBanner } from "@/components/layout/plan-banner";
 import TopNavbar from "@/components/layout/top-navbar";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 
@@ -44,6 +45,7 @@ export default function HRLayout({
         <TopNavbar onMenuClick={() => setMenuOpen(true)} />
 
         <main key={displayVersion} className="min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8">
+          <PlanBanner />
           {children}
         </main>
       </div>

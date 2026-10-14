@@ -183,6 +183,20 @@
       "when": 1791878987328,
       "tag": "0025_two_factor",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791894267501,
+      "tag": "0026_statutory_payroll",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791895856113,
+      "tag": "0027_documents_and_plans",
+      "breakpoints": true
     }
   ]
 }

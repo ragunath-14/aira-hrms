@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { employees } from "@/db/schema/employees";
 import { departments, designations, locations } from "@/db/schema/organization";
-import { payslips, salaryComponents } from "@/db/schema/payroll";
+import { employeeStatutory, payrollRecords, payslips, salaryComponents } from "@/db/schema/payroll";
 import { tenants } from "@/db/schema/tenants";
 import { resolveSettings } from "@/lib/config/settings";
 import { buildPayslipPdf } from "@/lib/domain/payslip-pdf";
@@ -31,7 +31,7 @@ export async function renderPayslip(params: {
 
   if (!row) return null;
 
-  const [[employee], [tenant], components] = await Promise.all([
+  const [[employee], [tenant], components, [record], [identity]] = await Promise.all([
     db
       .select({
         firstName: employees.firstName,
@@ -51,6 +51,17 @@ export async function renderPayslip(params: {
       .limit(1),
     db.select().from(tenants).where(eq(tenants.id, params.tenantId)).limit(1),
     db.select().from(salaryComponents).where(eq(salaryComponents.tenantId, params.tenantId)),
+    db.select().from(payrollRecords).where(eq(payrollRecords.id, row.payrollRecordId)).limit(1),
+    db
+      .select({ pan: employeeStatutory.pan, uan: employeeStatutory.uan })
+      .from(employeeStatutory)
+      .where(
+        and(
+          eq(employeeStatutory.tenantId, params.tenantId),
+          eq(employeeStatutory.employeeId, row.employeeId),
+        ),
+      )
+      .limit(1),
   ]);
 
   if (!employee || !tenant) return null;
@@ -68,9 +79,27 @@ export async function renderPayslip(params: {
   const sum = (list: { amount: number }[]) =>
     Math.round(list.reduce((t, i) => t + i.amount, 0) * 100) / 100;
 
+  const statutory = record
+    ? {
+        pfEmployee: Number(record.pfEmployee),
+        esiEmployee: Number(record.esiEmployee),
+        professionalTax: Number(record.professionalTax),
+        tds: Number(record.tds),
+        pfEmployer: Number(record.pfEmployer),
+        esiEmployer: Number(record.esiEmployer),
+      }
+    : undefined;
+  const statutoryTotal = statutory
+    ? statutory.pfEmployee + statutory.esiEmployee + statutory.professionalTax + statutory.tds
+    : 0;
+  const componentDeductions = Math.round((deductions - statutoryTotal) * 100) / 100;
+
   // The payslip stores totals only. Show the itemised lines when today's salary
   // components still add up to what was paid; otherwise show the totals alone.
-  const itemised = sum(allowanceItems) === allowances && sum(deductionItems) === deductions;
+  const itemised = sum(allowanceItems) === allowances && sum(deductionItems) === componentDeductions;
+
+  // A payslip shows who it belongs to without printing the whole PAN.
+  const pan = identity?.pan ? `${"X".repeat(5)}${identity.pan.slice(5)}` : null;
 
   const timezone = resolveSettings(tenant.settings).timezone;
   const generated = new Intl.DateTimeFormat("en-GB", {
@@ -99,6 +128,8 @@ export async function renderPayslip(params: {
       department: employee.department,
       location: employee.location,
       joinedOn: employee.joinedOn ? formatDate(employee.joinedOn) : null,
+      pan,
+      uan: identity?.uan ?? null,
     },
     period: row.payrollPeriod,
     generatedOn: generated,
@@ -108,6 +139,7 @@ export async function renderPayslip(params: {
     net: Number(row.netSalary),
     allowanceItems: itemised ? allowanceItems : undefined,
     deductionItems: itemised ? deductionItems : undefined,
+    statutory,
   });
 
   const safeName = name.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "employee";

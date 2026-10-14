@@ -35,6 +35,10 @@ export async function GET(request: Request) {
         totalAllowances: payrollRecords.totalAllowances,
         totalDeductions: payrollRecords.totalDeductions,
         netSalary: payrollRecords.netSalary,
+        pfEmployee: payrollRecords.pfEmployee,
+        esiEmployee: payrollRecords.esiEmployee,
+        professionalTax: payrollRecords.professionalTax,
+        tds: payrollRecords.tds,
         status: payrollRecords.status,
         createdAt: payrollRecords.createdAt,
       })

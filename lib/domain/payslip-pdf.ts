@@ -10,6 +10,8 @@ export type PayslipData = {
     department?: string | null;
     location?: string | null;
     joinedOn?: string | null;
+    pan?: string | null; // already masked
+    uan?: string | null;
   };
   period: string; // YYYY-MM
   generatedOn: string;
@@ -20,6 +22,16 @@ export type PayslipData = {
   // Itemised lines, only when they add up to the stored totals.
   allowanceItems?: { name: string; amount: number }[];
   deductionItems?: { name: string; amount: number }[];
+  // Statutory deductions taken from pay (included in `deductions`), and what
+  // the employer pays on top (not deducted).
+  statutory?: {
+    pfEmployee: number;
+    esiEmployee: number;
+    professionalTax: number;
+    tds: number;
+    pfEmployer: number;
+    esiEmployer: number;
+  };
 };
 
 const inr = (n: number) =>
@@ -144,6 +156,11 @@ export async function buildPayslipPdf(data: PayslipData): Promise<Uint8Array> {
     detail("Location", data.employee.location, left, y);
     y -= 34;
   }
+  if (data.employee.pan || data.employee.uan) {
+    detail("PAN", data.employee.pan ?? "-", left, y);
+    detail("UAN", data.employee.uan ?? "-", colB, y);
+    y -= 34;
+  }
 
   rule(y + 8);
   y -= 8;
@@ -176,11 +193,26 @@ export async function buildPayslipPdf(data: PayslipData): Promise<Uint8Array> {
 
   y -= 10;
   sectionTitle("Deductions");
+  const st = data.statutory;
+  const statutoryLines: [string, number][] = st
+    ? [
+        ["Provident fund (employee)", st.pfEmployee],
+        ["ESI (employee)", st.esiEmployee],
+        ["Professional tax", st.professionalTax],
+        ["Income tax (TDS)", st.tds],
+      ]
+    : [];
+  const statutoryTotal = statutoryLines.reduce((t, [, amount]) => t + amount, 0);
+  const otherDeductions = Math.round((data.deductions - statutoryTotal) * 100) / 100;
+
+  for (const [label, amount] of statutoryLines) {
+    if (amount > 0) line(label, amount);
+  }
   if (data.deductionItems && data.deductionItems.length > 0) {
     for (const item of data.deductionItems) line(item.name, item.amount);
-  } else if (data.deductions > 0) {
-    line("Deductions", data.deductions);
-  } else {
+  } else if (otherDeductions > 0) {
+    line(statutoryTotal > 0 ? "Other deductions" : "Deductions", otherDeductions);
+  } else if (statutoryTotal === 0) {
     text("None", left, y, 10.5, regular, MUTED);
     y -= 17;
   }
@@ -196,6 +228,15 @@ export async function buildPayslipPdf(data: PayslipData): Promise<Uint8Array> {
   y -= 36;
   text(amountInWords(data.net), left, y, 10, regular, MUTED);
   y -= 12;
+
+  if (st && (st.pfEmployer > 0 || st.esiEmployer > 0)) {
+    y -= 12;
+    const parts = [
+      st.pfEmployer > 0 ? `Provident fund ${inr(st.pfEmployer)}` : "",
+      st.esiEmployer > 0 ? `ESI ${inr(st.esiEmployer)}` : "",
+    ].filter(Boolean);
+    text(`Employer contribution (paid by the company, not deducted): ${parts.join(", ")}`, left, y, 8.5, regular, MUTED);
+  }
 
   // Footer
   footer(page, regular, data.generatedOn, left, right);

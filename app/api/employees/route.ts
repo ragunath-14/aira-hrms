@@ -7,6 +7,7 @@ import { findEmployeeDuplicate } from "@/lib/domain/employee-checks";
 import { ensureLeaveBalances } from "@/lib/domain/leave-balances";
 import { requireRole } from "@/lib/auth/authorization";
 import { logAudit } from "@/lib/domain/audit";
+import { checkCanAddPeople } from "@/lib/domain/plans";
 import { employeeCreateSchema } from "@/lib/validation/schemas";
 import {
   and,
@@ -131,6 +132,12 @@ export async function POST(request: Request) {
 
     if (duplicate) {
       return NextResponse.json({ error: duplicate }, { status: 409 });
+    }
+
+    const planProblem = await checkCanAddPeople(auth.tenant);
+
+    if (planProblem) {
+      return NextResponse.json({ error: planProblem }, { status: 402 });
     }
 
     const result = await db

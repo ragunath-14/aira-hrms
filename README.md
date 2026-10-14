@@ -410,10 +410,13 @@ otherwise only has a placeholder connection string.
 
 ## Known limitations
 
-- **Payroll is a basic MVP, not statutory-compliant.** Payroll runs
-  compute gross/net pay from basic salary, allowances, and deductions, but
-  there is no PF, ESI, TDS, or other statutory payroll compliance (India
-  or otherwise) implemented. Do not use this for real payroll processing.
+- **Statutory payroll covers the common Indian cases, not every one.**
+  PF, ESI, professional tax and TDS on salary are built in (see
+  [Statutory payroll](#statutory-payroll-pf-esi-professional-tax-tds)), but
+  surcharge on very high incomes, perquisites, arrears, bonus-based PF/ESI
+  rules, labour-welfare fund and gratuity are not. Rates and slabs are
+  company settings that you must keep in line with current law. Have your
+  accountant review the first few payroll runs before relying on them.
 - **System settings are persisted server-side, not in `localStorage`.**
   `/settings/system` (`app/(hr)/settings/system/page.tsx`) reads and
   writes tenant-wide preferences through `GET`/`PUT /api/settings/system`
@@ -525,3 +528,73 @@ recovery codes, their manager can use **Reset 2FA** (Settings -> Users; the
 platform owner does this for company owners on `/admin`). That removes the
 second step, signs the person out everywhere, emails them and is recorded in
 the audit log. It needs migration `0025_two_factor` (`npm run db:migrate`).
+
+## Statutory payroll (PF, ESI, professional tax, TDS)
+
+Everything here is **off until a company switches it on** in
+**Settings -> Payroll Compliance** (owner and admin; HR can read). The rules apply
+from the next payroll run; payroll already processed is never rewritten.
+
+| Rule | How it is worked out |
+| --- | --- |
+| Provident fund | Employee 12% and employer 12% of the employee's basic salary, on at most the wage ceiling (15,000) unless "contribute on the ceiling only" is turned off. The employer share is split into pension (EPS, 8.33% up to the ceiling) and EPF for the return. |
+| ESI | 0.75% employee and 3.25% employer of gross pay, only in months when gross is at or below the limit (21,000). Rounded up to the next rupee. |
+| Professional tax | A fixed monthly amount from the company's slab table, by gross pay. Starting slabs are provided for Tamil Nadu, Karnataka, Maharashtra, Telangana, Andhra Pradesh, West Bengal and Gujarat; edit them to match your state's current rules. |
+| TDS | Each month: project the year's pay (pay so far this financial year plus this month's pay for every month left), compute the year's tax, and spread what is still owed over the months left. New and old regimes, standard deduction, section 87A rebate (with marginal relief in the new regime) and 4% cess, using the FY 2025-26 rules. Surcharge is not applied. |
+
+Each employee's PAN, UAN, ESI number, which schemes apply to them, their tax
+regime and (old regime) declared deductions are kept under **Employees -> [person]
+-> Statutory** (owner, admin and HR only). The employee's share of PF, ESI,
+professional tax and TDS is included in **total deductions**, so net pay, payslips
+and CSV exports stay consistent; the payslip PDF itemises them and shows the
+employer's contribution. If a company already added a manual "Provident Fund"
+(or similar) salary component, remove it when switching the matching rule on,
+or the amount is deducted twice.
+
+**Statutory Report** (sidebar, Payroll) shows a month's totals and per-employee
+figures with CSV export, and **PF return (ECR)** downloads the EPFO text file for
+the month. Every PF member needs a UAN before the ECR can be produced. Check the
+file on the EPFO portal before filing.
+
+The calculators are plain functions in `lib/domain/statutory.ts` with the
+defaults in `lib/config/statutory.ts`; the rules for a new financial year are
+changed there.
+
+## Documents
+
+Employees' documents (offer letters, contracts, ID proofs, ...) are real files:
+PDF, PNG, JPG, DOC/DOCX, XLS/XLSX, TXT or CSV, up to 5 MB each. A file's type is
+decided from its contents, not its name, so an executable renamed `.pdf`, HTML
+and SVG are refused.
+
+- **Who sees what.** Owner, admin and HR see every document of an employee.
+  Managers do not. An employee sees what HR shared with them plus what they
+  uploaded themselves; HR can mark a document **HR only** (for letters and
+  notes), and then the employee cannot list or download it. Employees can delete
+  only their own uploads. Anyone else, or a user of another company, gets "not
+  found". HR opening someone else's document is written to the audit log.
+- **Where files live.** In the database (`document_files`, a Postgres `bytea`
+  column, kept apart from the document list). That needs no extra service and
+  works on Render's free plan, but it uses your Neon storage, so each company's
+  storage is capped by its plan. To move to S3 or Cloudflare R2 later, change
+  `lib/domain/document-store.ts` (write) and `app/api/documents/[id]/file/route.ts`
+  (read); nothing else touches the bytes.
+- **Older uploads** that stored a whole file as a `data:` link are still listed
+  and downloadable. Links must be `http(s)` addresses.
+
+## Plans and usage
+
+Each company has a plan (Free, Starter, Growth, Enterprise; catalogue in
+`lib/config/plans.ts`) that limits **people** (the larger of its employee records
+and its logins) and **document storage**, with an optional expiry date. The
+platform owner chooses the plan when creating a company and can change it, override
+either limit, or set an expiry at any time with **Plan** on `/admin`; the page also
+shows each company's usage (counts only, never its data). Companies that existed
+before plans were introduced were moved to Enterprise so nothing changes for them.
+
+When a plan is full or has expired the company can still sign in and read
+everything, but adding people (employees or logins) and uploading documents is
+refused with a clear message. Owners and admins see their usage under **Settings
+-> Plan & Usage** and get a warning banner at 90% and when blocked. There is no
+payment processing: plans are set by hand. A payment provider can call the same
+"set plan" path later. Plan changes are recorded in the platform audit log.

@@ -6,7 +6,8 @@ import { employeeDocuments } from "@/db/schema";
 import { isUuid } from "@/lib/validation/ids";
 import { getActor, invalid, notFound, serverError, unauthorized } from "@/lib/domain/workplace";
 
-// An employee removes a document they uploaded themselves.
+// An employee removes a document they uploaded themselves. Documents HR added
+// (offer letters, contracts) are not theirs to delete.
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -25,6 +26,7 @@ export async function DELETE(
           eq(employeeDocuments.id, id),
           eq(employeeDocuments.tenantId, actor.tenant.id),
           eq(employeeDocuments.employeeId, actor.employee.id),
+          eq(employeeDocuments.uploadedBy, actor.user.id),
         ),
       )
       .returning({ id: employeeDocuments.id });

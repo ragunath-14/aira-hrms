@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckIcon, KeyRoundIcon, PlusIcon, ShieldCheckIcon, ShieldOffIcon, XIcon } from "lucide-react";
+import { CheckIcon, GaugeIcon, KeyRoundIcon, PlusIcon, ShieldCheckIcon, ShieldOffIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth/client";
@@ -39,6 +39,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { errorText } from "@/lib/format/error-text";
+import { DEFAULT_PLAN, PLANS, PLAN_IDS, resolveLimits, type PlanId } from "@/lib/config/plans";
+import { formatSize } from "@/lib/domain/documents-shared";
+import { selectClass } from "@/components/shared/ui-bits";
 
 type AccessRequest = {
   id: string;
@@ -50,6 +53,12 @@ type AccessRequest = {
   ownerName: string | null;
   ownerEmail: string | null;
   ownerTwoFactor: boolean;
+  plan: string;
+  planEmployeeLimit: number | null;
+  planStorageMb: number | null;
+  planExpiresAt: string | null;
+  peopleUsed: number;
+  storageUsedBytes: number;
   phone: string | null;
   city: string | null;
   state: string | null;
@@ -61,6 +70,7 @@ const EMPTY_COMPANY = {
   ownerName: "",
   ownerEmail: "",
   password: "",
+  plan: DEFAULT_PLAN as string,
   companyEmail: "",
   phone: "",
   website: "",
@@ -107,6 +117,8 @@ export default function AccessRequestsPage() {
   const [pwTarget, setPwTarget] = useState<AccessRequest | null>(null);
   const [newPw, setNewPw] = useState("");
   const [saving, setSaving] = useState(false);
+  const [planTarget, setPlanTarget] = useState<AccessRequest | null>(null);
+  const [planForm, setPlanForm] = useState({ plan: DEFAULT_PLAN as string, employeeLimit: "", storageMb: "", expiresAt: "" });
 
   const load = useCallback(async () => {
     try {
@@ -215,6 +227,47 @@ export default function AccessRequestsPage() {
     }
   }
 
+  function openPlan(request: AccessRequest) {
+    setPlanForm({
+      plan: request.plan,
+      employeeLimit: request.planEmployeeLimit === null ? "" : String(request.planEmployeeLimit),
+      storageMb: request.planStorageMb === null ? "" : String(request.planStorageMb),
+      expiresAt: request.planExpiresAt ? request.planExpiresAt.slice(0, 10) : "",
+    });
+    setPlanTarget(request);
+  }
+
+  async function submitPlan(e: React.FormEvent) {
+    e.preventDefault();
+    if (!planTarget) return;
+
+    try {
+      setSaving(true);
+
+      const res = await fetch(`/api/admin/tenants/${planTarget.id}/plan`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: planForm.plan,
+          employeeLimit: planForm.employeeLimit.trim() === "" ? null : Number(planForm.employeeLimit),
+          storageMb: planForm.storageMb.trim() === "" ? null : Number(planForm.storageMb),
+          expiresAt: planForm.expiresAt || null,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(errorText(data.error, "Failed to change the plan"));
+
+      toast.success(`Plan updated for ${planTarget.companyName}`);
+      setPlanTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to change the plan");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function resetOwnerTwoFactor(request: AccessRequest) {
     if (!window.confirm(`Remove two-factor sign-in for ${request.ownerEmail}? Use this when they lost their phone and recovery codes.`)) {
       return;
@@ -268,7 +321,7 @@ export default function AccessRequestsPage() {
 
   return (
     <main className="min-h-screen bg-muted/30 p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <PageHeader
           title="Companies"
           description="Create companies and give each owner a login. Each owner then adds their own team. This page never shows a company's data."
@@ -338,6 +391,7 @@ export default function AccessRequestsPage() {
                     <TableHead>Company</TableHead>
                     <TableHead>Owner (user ID)</TableHead>
                     <TableHead>Details</TableHead>
+                    <TableHead>Plan &amp; usage</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Action</TableHead>
@@ -358,6 +412,34 @@ export default function AccessRequestsPage() {
                         <div className="text-xs">{request.phone ?? ""}</div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
+                        {(() => {
+                          const limits = resolveLimits({
+                            plan: request.plan,
+                            planEmployeeLimit: request.planEmployeeLimit,
+                            planStorageMb: request.planStorageMb,
+                            planExpiresAt: request.planExpiresAt ? new Date(request.planExpiresAt) : null,
+                          });
+                          const full = limits.employeeLimit !== null && request.peopleUsed >= limits.employeeLimit;
+
+                          return (
+                            <>
+                              <div className="font-medium text-foreground">{limits.plan.label}</div>
+                              <div className={`text-xs ${full ? "font-medium text-destructive" : ""}`}>
+                                {request.peopleUsed} / {limits.employeeLimit ?? "unlimited"} people
+                              </div>
+                              <div className="text-xs">
+                                {formatSize(request.storageUsedBytes)} / {formatSize(limits.storageBytes)}
+                              </div>
+                              {limits.expiresAt && (
+                                <div className={`text-xs ${limits.expired ? "font-medium text-destructive" : ""}`}>
+                                  {limits.expired ? "Expired" : "Expires"} {limits.expiresAt.toLocaleDateString()}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
                         {new Date(request.requestedAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
@@ -368,7 +450,7 @@ export default function AccessRequestsPage() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-right">
+                      <TableCell className="text-right"><div className="ml-auto flex max-w-[24rem] flex-wrap justify-end gap-2">
                         <Button
                           size="sm"
                           variant="outline"
@@ -379,11 +461,14 @@ export default function AccessRequestsPage() {
                         >
                           <KeyRoundIcon /> Set owner password
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => openPlan(request)}>
+                          <GaugeIcon /> Plan
+                        </Button>
                         {request.ownerTwoFactor && (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="ml-2"
+                           
                             onClick={() => resetOwnerTwoFactor(request)}
                           >
                             <ShieldOffIcon /> Reset 2FA
@@ -392,7 +477,7 @@ export default function AccessRequestsPage() {
                         {request.status !== "approved" && (
                           <Button
                             size="sm"
-                            className="ml-2"
+                           
                             disabled={busyId === request.id}
                             onClick={() => decide(request, "approve")}
                           >
@@ -403,7 +488,7 @@ export default function AccessRequestsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="ml-2"
+                           
                             disabled={busyId === request.id}
                             onClick={() => {
                               setNote("");
@@ -413,6 +498,7 @@ export default function AccessRequestsPage() {
                             <XIcon /> Suspend
                           </Button>
                         )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -537,6 +623,15 @@ export default function AccessRequestsPage() {
             </div>
 
             <div>
+              <Label htmlFor="co-plan" className="mb-1.5">Plan</Label>
+              <select id="co-plan" className={selectClass} value={company.plan} onChange={(e) => setCompany({ ...company, plan: e.target.value })}>
+                {PLAN_IDS.map((id) => (
+                  <option key={id} value={id}>{PLANS[id].label} — {PLANS[id].blurb}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <Label htmlFor="co-pass" className="mb-1.5">Password</Label>
               <div className="flex gap-2">
                 <Input id="co-pass" required minLength={12} maxLength={128} autoComplete="off" value={company.password} onChange={(e) => setCompany({ ...company, password: e.target.value })} />
@@ -552,6 +647,47 @@ export default function AccessRequestsPage() {
               <Button type="submit" disabled={saving || company.password.length < 12}>
                 {saving ? "Creating…" : "Create company"}
               </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={planTarget !== null} onOpenChange={(open) => !open && setPlanTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Plan &amp; limits</DialogTitle>
+            <DialogDescription>
+              {planTarget?.companyName}: choose a plan, and optionally override its limits or set the day it expires. When a plan is full or expired, the company can still sign in and see its data but cannot add people or upload documents.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={submitPlan} className="space-y-4">
+            <div>
+              <Label htmlFor="plan-id" className="mb-1.5">Plan</Label>
+              <select id="plan-id" className={selectClass} value={planForm.plan} onChange={(e) => setPlanForm({ ...planForm, plan: e.target.value })}>
+                {PLAN_IDS.map((id) => (
+                  <option key={id} value={id}>{PLANS[id].label} — {PLANS[id].blurb}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="plan-people" className="mb-1.5">People limit</Label>
+                <Input id="plan-people" type="number" min="1" step="1" placeholder={`Plan: ${PLANS[planForm.plan as PlanId]?.employeeLimit ?? "unlimited"}`} value={planForm.employeeLimit} onChange={(e) => setPlanForm({ ...planForm, employeeLimit: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="plan-storage" className="mb-1.5">Storage (MB)</Label>
+                <Input id="plan-storage" type="number" min="1" step="1" placeholder={`Plan: ${PLANS[planForm.plan as PlanId]?.storageMb ?? ""}`} value={planForm.storageMb} onChange={(e) => setPlanForm({ ...planForm, storageMb: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="plan-expiry" className="mb-1.5">Valid until (optional)</Label>
+              <Input id="plan-expiry" type="date" value={planForm.expiresAt} onChange={(e) => setPlanForm({ ...planForm, expiresAt: e.target.value })} />
+              <p className="mt-1 text-xs text-muted-foreground">Leave a limit blank to use the plan&apos;s own number, and the date blank for no expiry.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPlanTarget(null)}>Cancel</Button>
+              <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save plan"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

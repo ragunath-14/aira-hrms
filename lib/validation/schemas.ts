@@ -401,3 +401,73 @@ export const instantMeetingSchema = z.object({
   attendeeIds: z.array(z.string().uuid()).max(50).default([]),
   title: z.string().trim().max(120).optional(),
 });
+
+const percent = z.number().min(0, "A rate cannot be negative").max(100, "A rate cannot be more than 100%");
+const money = z.number().min(0, "Amounts cannot be negative").max(100_000_000);
+
+// Company statutory-payroll rules (Settings -> Payroll compliance).
+export const statutoryConfigSchema = z
+  .object({
+    pf: z
+      .object({
+        enabled: z.boolean(),
+        employeeRate: percent,
+        employerRate: percent,
+        wageCeiling: money,
+        capWage: z.boolean(),
+        epsRate: percent,
+      })
+      .strict(),
+    esi: z
+      .object({
+        enabled: z.boolean(),
+        employeeRate: percent,
+        employerRate: percent,
+        grossLimit: money,
+      })
+      .strict(),
+    pt: z
+      .object({
+        enabled: z.boolean(),
+        state: z.string().trim().max(60),
+        slabs: z
+          .array(z.object({ upTo: money.nullable(), amount: money }).strict())
+          .min(1, "Add at least one professional tax slab")
+          .max(20)
+          .refine((slabs) => slabs.filter((s) => s.upTo === null).length === 1, {
+            message: "Exactly one slab must be 'and above' (leave its upper limit empty)",
+          })
+          .refine(
+            (slabs) => {
+              const limits = slabs.filter((s) => s.upTo !== null).map((s) => s.upTo as number);
+              return new Set(limits).size === limits.length;
+            },
+            { message: "Two slabs have the same upper limit" },
+          ),
+      })
+      .strict(),
+    tds: z.object({ enabled: z.boolean() }).strict(),
+  })
+  .strict();
+
+const panField = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "PAN must look like ABCDE1234F");
+
+// Empty string clears the value.
+const optionalId = (schema: z.ZodString) => z.union([z.literal(""), schema]).nullable().optional();
+
+export const employeeStatutorySchema = z
+  .object({
+    pan: optionalId(panField),
+    uan: optionalId(z.string().trim().regex(/^\d{12}$/, "UAN must be 12 digits")),
+    esiNumber: optionalId(z.string().trim().regex(/^\d{10,17}$/, "ESI number must be 10 to 17 digits")),
+    pfApplicable: z.boolean().optional(),
+    esiApplicable: z.boolean().optional(),
+    ptApplicable: z.boolean().optional(),
+    taxRegime: z.enum(["new", "old"]).optional(),
+    declaredDeductions: z.number().min(0).max(100_000_000).optional(),
+  })
+  .strict();

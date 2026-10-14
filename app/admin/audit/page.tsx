@@ -45,6 +45,7 @@ const ACTION_LABELS: Record<string, string> = {
   access_rejected: "Access suspended",
   owner_password_reset: "Owner password reset",
   owner_two_factor_reset: "Owner two-factor reset",
+  plan_changed: "Plan changed",
   login: "Signed in",
 };
 

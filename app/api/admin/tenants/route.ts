@@ -11,6 +11,7 @@ import { logAudit } from "@/lib/domain/audit";
 import { requireSuperAdmin } from "@/lib/auth/authorization";
 import { auth as authInstance } from "@/lib/auth/server";
 import { setLoginPassword } from "@/lib/auth/credentials";
+import { DEFAULT_PLAN, PLAN_IDS } from "@/lib/config/plans";
 import { httpUrl } from "@/lib/validation/schemas";
 
 const auth$context = () => authInstance.$context;
@@ -40,6 +41,17 @@ export async function GET(request: Request) {
         ownerName: users.name,
         ownerEmail: users.email,
         ownerTwoFactor: sql<boolean>`coalesce((select au.two_factor_enabled from "user" au where lower(au.email) = lower(${users.email}) limit 1), false)`,
+        plan: tenants.plan,
+        planEmployeeLimit: tenants.planEmployeeLimit,
+        planStorageMb: tenants.planStorageMb,
+        planExpiresAt: tenants.planExpiresAt,
+        // Counts only (never the data itself) so the platform owner can see
+        // how much of its plan each company is using.
+        peopleUsed: sql<number>`greatest(
+          (select count(*)::int from employees e where e.tenant_id = ${tenants.id} and e.status <> 'terminated'),
+          (select count(*)::int from memberships m where m.tenant_id = ${tenants.id})
+        )`,
+        storageUsedBytes: sql<number>`coalesce((select sum(d.size_bytes) from employee_documents d where d.tenant_id = ${tenants.id} and d.kind = 'file'), 0)::float8`,
         phone: tenants.phone,
         city: tenants.city,
         state: tenants.state,
@@ -88,6 +100,9 @@ const createSchema = z.object({
   ownerName: z.string().trim().min(2).max(120),
   ownerEmail: z.string().trim().toLowerCase().email().max(200),
   password: z.string().min(12).max(128),
+
+  // Subscription plan the company starts on; changeable later.
+  plan: z.enum(PLAN_IDS as [string, ...string[]]).default(DEFAULT_PLAN),
 
   // Company details the platform owner notes down for the company; the owner
   // sees them pre-filled in Settings -> Company and can edit them.
@@ -180,6 +195,7 @@ export async function POST(request: Request) {
         city: details.city ?? null,
         state: details.state ?? null,
         country: details.country ?? null,
+        plan: details.plan,
         accessStatus: "approved",
         accessReviewedAt: new Date(),
         accessReviewedBy: auth.user.id,

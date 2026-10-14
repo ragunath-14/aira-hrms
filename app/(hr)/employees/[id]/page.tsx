@@ -10,6 +10,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useIsHr } from "@/hooks/use-is-hr";
+import { EmployeeStatutoryTab } from "@/components/features/employee-statutory-tab";
+import { DocumentsPanel } from "@/components/features/documents-panel";
 import {
   Dialog,
   DialogContent,
@@ -111,15 +113,7 @@ type PayrollItem = {
   status: string;
 };
 
-type Document = {
-  id: string;
-  name: string;
-  type: string | null;
-  url: string;
-  createdAt: string;
-};
-
-type Tab = "overview" | "employment" | "attendance" | "leave" | "payroll" | "documents";
+type Tab = "overview" | "employment" | "attendance" | "leave" | "payroll" | "statutory" | "documents";
 
 export default function EmployeeProfilePage() {
   const params = useParams<{ id: string }>();
@@ -127,7 +121,6 @@ export default function EmployeeProfilePage() {
   const id = params.id;
 
   const [employee, setEmployee] = useState<EmployeeDetail | null>(null);
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -149,22 +142,13 @@ export default function EmployeeProfilePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const [docName, setDocName] = useState("");
-  const [docType, setDocType] = useState("");
-  const [docUrl, setDocUrl] = useState("");
-  const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [docError, setDocError] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     try {
       setLoading(true);
       setError("");
 
-      const [empRes, docRes] = await Promise.all([
-        fetch(`/api/employees/${id}`),
-        fetch(`/api/employees/${id}/documents`),
-      ]);
+      const empRes = await fetch(`/api/employees/${id}`);
 
       if (!empRes.ok) {
         const d = await empRes.json();
@@ -188,10 +172,6 @@ export default function EmployeeProfilePage() {
         status: emp.status,
       });
 
-      if (docRes.ok) {
-        const docs: Document[] = await docRes.json();
-        setDocuments(Array.isArray(docs) ? docs : []);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load employee");
     } finally {
@@ -316,43 +296,6 @@ export default function EmployeeProfilePage() {
     }
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setDocUrl(reader.result as string);
-      if (!docName) setDocName(file.name);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function handleDocUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!docName || !docUrl) { setDocError("Name and file are required"); return; }
-    setUploadingDoc(true);
-    setDocError("");
-    try {
-      const res = await fetch(`/api/employees/${id}/documents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: docName, type: docType || null, url: docUrl }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(errorText(data.error, "Upload failed"));
-      setDocName(""); setDocType(""); setDocUrl("");
-      if (fileRef.current) fileRef.current.value = "";
-      toast.success("Document uploaded");
-      await load();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Upload failed";
-      setDocError(message);
-      toast.error(message);
-    } finally {
-      setUploadingDoc(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="mx-auto max-w-5xl space-y-4">
@@ -393,6 +336,7 @@ export default function EmployeeProfilePage() {
     { id: "attendance", label: "Attendance" },
     { id: "leave", label: "Leave" },
     { id: "payroll", label: "Payroll" },
+    ...(isHr ? [{ id: "statutory" as Tab, label: "Statutory" }] : []),
     { id: "documents", label: "Documents" },
   ];
 
@@ -749,73 +693,23 @@ export default function EmployeeProfilePage() {
           </Card>
         </TabsContent>
 
-        {/* Documents tab */}
-        <TabsContent value="documents" className="space-y-4">
-          <Card>
-            <CardContent className="px-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">Upload Document</h2>
-              <form onSubmit={handleDocUpload} className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <Label className="mb-1.5">Document Name</Label>
-                  <Input
-                    value={docName}
-                    onChange={(e) => setDocName(e.target.value)}
-                    required
-                    placeholder="e.g. ID Proof"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-1.5">Type (optional)</Label>
-                  <Input
-                    value={docType}
-                    onChange={(e) => setDocType(e.target.value)}
-                    placeholder="e.g. id_proof, contract"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-1.5">File</Label>
-                  <Input
-                    ref={fileRef}
-                    type="file"
-                    onChange={handleFileChange}
-                  />
-                </div>
-                {docError && <p className="text-sm text-destructive md:col-span-3">{docError}</p>}
-                <div className="flex justify-end md:col-span-3">
-                  <Button type="submit" disabled={uploadingDoc || !docUrl}>
-                    {uploadingDoc ? "Uploading…" : "Upload Document"}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+        {isHr && (
+          <TabsContent value="statutory">
+            <EmployeeStatutoryTab employeeId={id} />
+          </TabsContent>
+        )}
 
-          <Card className="overflow-hidden p-0">
-            <div className="border-b px-6 py-4">
-              <h2 className="text-lg font-semibold text-foreground">Documents ({documents.length})</h2>
-            </div>
-            {documents.length === 0 ? (
-              <EmptyState icon={FileTextIcon} title="No documents uploaded yet." />
-            ) : (
-              <div className="divide-y">
-                {documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between px-6 py-4">
-                    <div>
-                      <p className="font-medium text-foreground">{doc.name}</p>
-                      <p className="text-xs text-muted-foreground">{doc.type ?? "document"} · {formatDate(doc.createdAt)}</p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      render={<a href={doc.url} target="_blank" rel="noreferrer" />}
-                    >
-                      View
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+        {/* Documents tab */}
+        <TabsContent value="documents">
+          {isHr ? (
+            <DocumentsPanel mode="hr" employeeId={id} />
+          ) : (
+            <Card>
+              <CardContent className="px-6 text-sm text-muted-foreground">
+                Only HR can see an employee&apos;s documents.
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
