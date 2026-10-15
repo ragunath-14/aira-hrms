@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { departments, designations, locations } from "@/db/schema/organization";
 import { employees } from "@/db/schema/employees";
+import { employeePhotos } from "@/db/schema/employee-photos";
 import { getOrCreateCurrentEmployee } from "@/lib/auth/authorization";
 
 export async function GET(request: Request) {
@@ -42,8 +43,13 @@ export async function GET(request: Request) {
       return row ? [row.firstName, row.lastName].filter(Boolean).join(" ") : null;
     };
 
-    const [departmentName, designationName, locationName, managerName] =
+    const [[photo], departmentName, designationName, locationName, managerName] =
       await Promise.all([
+        db
+          .select({ updatedAt: employeePhotos.updatedAt })
+          .from(employeePhotos)
+          .where(eq(employeePhotos.employeeId, employee.id))
+          .limit(1),
         nameOf(departments, employee.departmentId),
         nameOf(designations, employee.designationId),
         nameOf(locations, employee.locationId),
@@ -63,6 +69,8 @@ export async function GET(request: Request) {
       locationId: employee.locationId,
       managerId: employee.managerId,
       status: employee.status,
+      // Changes whenever the photo does; null when there is none.
+      photoVersion: photo ? photo.updatedAt.getTime() : null,
       companyName: tenant.name,
       role: membership.role,
       departmentName,

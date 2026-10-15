@@ -162,6 +162,7 @@ export async function POST(request: Request) {
         maxConsecutiveDays,
         minNoticeDays,
         encashmentAllowed: Boolean(body.encashmentAllowed),
+        isPaid: body.isPaid === undefined ? true : Boolean(body.isPaid),
         rulesText: body.rulesText?.trim() || null,
       })
       .returning();

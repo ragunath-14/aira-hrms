@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, IndianRupee, PlayIcon, Receipt } from "lucide-react";
+import { BanknoteIcon, CheckCircle2, GiftIcon, IndianRupee, PlayIcon, Receipt } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -40,6 +40,9 @@ import { useIsHr } from "@/hooks/use-is-hr";
 import { downloadCsv } from "@/lib/format/csv";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { formatDate } from "@/lib/format/date";
+import { errorText } from "@/lib/format/error-text";
+import { PayrollAdjustmentsDialog } from "@/components/features/payroll-adjustments-dialog";
+import { PayrollReviewDialog } from "@/components/features/payroll-review-dialog";
 
 type PayrollRecord = {
   id: string;
@@ -51,6 +54,10 @@ type PayrollRecord = {
   totalAllowances: string;
   totalDeductions: string;
   netSalary: string;
+  paidDays: string;
+  lopDays: string;
+  daysInPeriod: number;
+  overtimePay: string;
   status: string;
 };
 
@@ -77,39 +84,34 @@ export default function PayrollPage() {
 
   const isHr = useIsHr();
   const [runOpen, setRunOpen] = useState(false);
-  const [runMonth, setRunMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [running, setRunning] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankMonth, setBankMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [bankBusy, setBankBusy] = useState(false);
 
-  async function runPayroll(e: React.FormEvent) {
+  async function downloadBankFile(e: React.FormEvent) {
     e.preventDefault();
-    setRunning(true);
+    setBankBusy(true);
 
     try {
-      const res = await fetch("/api/payroll/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payrollPeriod: runMonth }),
-      });
-      const data = await res.json();
+      const res = await fetch(`/api/payroll/bank-file?period=${bankMonth}`);
 
       if (!res.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "Failed to run payroll");
+        const data = await res.json().catch(() => null);
+        throw new Error(errorText(data?.error, "Could not build the bank file"));
       }
 
-      const notes = [
-        data.alreadyPaid ? `${data.alreadyPaid} already paid` : "",
-        data.noStructure ? `${data.noStructure} without a salary structure` : "",
-      ].filter(Boolean);
-
-      toast.success(
-        `Payroll for ${data.payrollPeriod}: ${data.created} payslip${data.created === 1 ? "" : "s"} generated${notes.length ? ` (${notes.join(", ")})` : ""}`,
-      );
-      setRunOpen(false);
-      loadPayroll();
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `salary-transfer-${bankMonth}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setBankOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to run payroll");
+      toast.error(err instanceof Error ? err.message : "Could not build the bank file");
     } finally {
-      setRunning(false);
+      setBankBusy(false);
     }
   }
 
@@ -161,9 +163,17 @@ export default function PayrollPage() {
         action={
           <>
           {isHr && (
-            <Button onClick={() => setRunOpen(true)}>
-              <PlayIcon /> Run payroll
-            </Button>
+            <>
+              <Button onClick={() => setRunOpen(true)}>
+                <PlayIcon /> Review &amp; run
+              </Button>
+              <Button variant="outline" onClick={() => setAdjustOpen(true)}>
+                <GiftIcon /> Adjustments
+              </Button>
+              <Button variant="outline" onClick={() => setBankOpen(true)}>
+                <BanknoteIcon /> Bank file
+              </Button>
+            </>
           )}
           <Button
             variant="outline"
@@ -171,7 +181,7 @@ export default function PayrollPage() {
             onClick={() =>
               downloadCsv(
                 `payroll-${new Date().toISOString().slice(0, 10)}.csv`,
-                ["Code", "Employee", "Period", "Basic (INR)", "Allowances (INR)", "Deductions (INR)", "Net (INR)", "Status"],
+                ["Code", "Employee", "Period", "Basic (INR)", "Allowances (INR)", "Deductions (INR)", "Net (INR)", "Status", "Paid days", "LOP days", "Overtime (INR)"],
                 payroll.map((r) => [
                   r.employeeCode,
                   r.employeeName,
@@ -181,6 +191,9 @@ export default function PayrollPage() {
                   r.totalDeductions,
                   r.netSalary,
                   r.status,
+                  r.daysInPeriod > 0 ? r.paidDays : "",
+                  r.daysInPeriod > 0 ? r.lopDays : "",
+                  r.overtimePay,
                 ]),
               )
             }
@@ -253,6 +266,11 @@ export default function PayrollPage() {
                           <div className="font-medium">{record.employeeName ?? "—"}</div>
                           {record.employeeCode && (
                             <div className="text-xs text-muted-foreground">{record.employeeCode}</div>
+                          )}
+                          {record.daysInPeriod > 0 && Number(record.lopDays) > 0 && (
+                            <div className="text-xs text-destructive">
+                              {record.paidDays} of {record.daysInPeriod} days paid · {record.lopDays} LOP
+                            </div>
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -391,30 +409,28 @@ export default function PayrollPage() {
         </>
       )}
 
-      <Dialog open={runOpen} onOpenChange={setRunOpen}>
+      <PayrollReviewDialog open={runOpen} onOpenChange={setRunOpen} onDone={loadPayroll} />
+      <PayrollAdjustmentsDialog open={adjustOpen} onOpenChange={setAdjustOpen} />
+
+      <Dialog open={bankOpen} onOpenChange={setBankOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Run payroll</DialogTitle>
+            <DialogTitle>Bank transfer file</DialogTitle>
             <DialogDescription>
-              Pays every active employee for the month from their salary structure and generates their payslips. Anyone already paid for that month is skipped.
+              A CSV of the month&apos;s net pay with each person&apos;s account number and IFSC, ready to
+              upload to your bank. Everyone being paid needs bank details under Employees → Statutory.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={runPayroll} className="space-y-4">
+          <form onSubmit={downloadBankFile} className="space-y-4">
             <div>
-              <Label htmlFor="run-month" className="mb-1.5">Month</Label>
-              <Input
-                id="run-month"
-                type="month"
-                required
-                value={runMonth}
-                onChange={(e) => setRunMonth(e.target.value)}
-              />
+              <Label htmlFor="bank-month" className="mb-1.5">Month</Label>
+              <Input id="bank-month" type="month" required value={bankMonth} onChange={(e) => setBankMonth(e.target.value)} />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRunOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={running || !runMonth}>
-                {running ? "Running…" : "Run payroll"}
+              <Button type="button" variant="outline" onClick={() => setBankOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={bankBusy || !bankMonth}>
+                <DownloadIcon /> {bankBusy ? "Preparing…" : "Download"}
               </Button>
             </DialogFooter>
           </form>

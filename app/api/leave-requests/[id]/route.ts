@@ -11,6 +11,7 @@ import { employees } from "@/db/schema/employees";
 import { notifications } from "@/db/schema/notifications";
 import { logAudit } from "@/lib/domain/audit";
 import { createNotification } from "@/lib/domain/notifications";
+import { payrollLockMessage } from "@/lib/domain/payroll-lock";
 
 export async function PATCH(
   request: Request,
@@ -87,6 +88,17 @@ export async function PATCH(
         { status: 409 },
       );
     }
+
+    const locked = await payrollLockMessage({
+      tenantId: auth.tenant.id,
+      settings: auth.tenant.settings,
+      employeeId: leaveRequest.employeeId,
+      startDate: leaveRequest.startDate,
+      endDate: leaveRequest.endDate,
+      affects: "leave",
+    });
+
+    if (locked) return Response.json({ error: locked }, { status: 409 });
 
     // Nobody reviews their own request, and the approver is recorded.
     const [[requester], [approver]] = await Promise.all([
@@ -380,6 +392,17 @@ export async function DELETE(
     if (!existing) {
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
+
+    const locked = await payrollLockMessage({
+      tenantId: auth.tenant.id,
+      settings: auth.tenant.settings,
+      employeeId: existing.employeeId,
+      startDate: existing.startDate,
+      endDate: existing.endDate,
+      affects: "leave",
+    });
+
+    if (locked) return NextResponse.json({ error: locked }, { status: 409 });
 
     if (existing.status === "approved") {
       const [balance] = await db

@@ -26,6 +26,10 @@ export const leaveTypes = pgTable("leave_types", {
 
   description: text("description"),
 
+  // Unpaid leave (loss of pay) reduces that month's salary when payroll is
+  // linked to attendance.
+  isPaid: boolean("is_paid").notNull().default(true),
+
   daysPerYear: integer("days_per_year")
     .notNull()
     .default(0),

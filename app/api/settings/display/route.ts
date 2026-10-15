@@ -18,5 +18,7 @@ export async function GET(request: Request) {
     dateFormat: settings.dateFormat,
     timezone: settings.timezone,
     shiftStart: settings.shiftStart,
+    requirePunchLocation: settings.requirePunchLocation,
+    requirePunchPhoto: settings.requirePunchPhoto,
   });
 }

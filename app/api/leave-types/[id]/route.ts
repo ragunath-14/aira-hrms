@@ -58,6 +58,7 @@ export async function PATCH(
       maxConsecutiveDays?: number | null;
       minNoticeDays?: number | null;
       encashmentAllowed?: boolean;
+      isPaid?: boolean;
       rulesText?: string | null;
       updatedAt: Date;
     } = {
@@ -124,6 +125,10 @@ export async function PATCH(
 
     if (body.encashmentAllowed !== undefined) {
       updateData.encashmentAllowed = Boolean(body.encashmentAllowed);
+    }
+
+    if (body.isPaid !== undefined) {
+      updateData.isPaid = Boolean(body.isPaid);
     }
 
     if (body.rulesText !== undefined) {

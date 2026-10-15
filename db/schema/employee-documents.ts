@@ -12,7 +12,7 @@ import {
 import { tenants } from "./tenants";
 import { employees } from "./employees";
 
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
     return "bytea";
   },

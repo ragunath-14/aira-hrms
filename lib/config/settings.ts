@@ -18,6 +18,11 @@ export type TenantSettings = {
   graceMinutes: number;
   halfDayAfter: string;
   minFullDayHours: number;
+
+  // Proof at check-in and check-out. Location is checked against the
+  // employee's site when that site has a fence; the photo is a selfie.
+  requirePunchLocation: boolean;
+  requirePunchPhoto: boolean;
 };
 
 export const SETTING_DEFAULTS: TenantSettings = {
@@ -33,13 +38,25 @@ export const SETTING_DEFAULTS: TenantSettings = {
   graceMinutes: 15,
   halfDayAfter: "13:00",
   minFullDayHours: 4,
+  requirePunchLocation: false,
+  requirePunchPhoto: false,
 };
 
 export function resolveSettings(raw: unknown): TenantSettings {
   const stored =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
-  return { ...SETTING_DEFAULTS, ...stored } as TenantSettings;
+  // Only the system settings themselves. The same JSON also holds other groups
+  // (statutory rules, payroll rules) that have their own pages and resolvers;
+  // letting them through would hand them to the System Settings page, which
+  // sends back everything it receives.
+  const own = Object.fromEntries(
+    Object.keys(SETTING_DEFAULTS)
+      .filter((key) => key in stored)
+      .map((key) => [key, stored[key]]),
+  );
+
+  return { ...SETTING_DEFAULTS, ...own } as TenantSettings;
 }
 
 export function toMinutes(time: string) {

@@ -16,7 +16,7 @@ import {
 import { authClient } from "@/lib/auth/client";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -236,6 +236,12 @@ export default function EmployeeShell({
                 >
                   <span className="relative">
                     <Avatar>
+                      {employee.photoVersion != null && (
+                        <AvatarImage
+                          src={`/api/employees/${employee.id}/photo?v=${employee.photoVersion}`}
+                          alt=""
+                        />
+                      )}
                       <AvatarFallback className="bg-primary/10 font-semibold text-primary">
                         {initials}
                       </AvatarFallback>

@@ -5,6 +5,8 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  integer,
+  numeric,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -78,6 +80,14 @@ export const locations = pgTable("locations", {
   state: text("state"),
 
   country: text("country"),
+
+  // Where the site is, and how far from it a punch is accepted (metres). All
+  // three must be set for the location to be geo-fenced.
+  latitude: numeric("latitude", { precision: 9, scale: 6 }),
+
+  longitude: numeric("longitude", { precision: 9, scale: 6 }),
+
+  geofenceRadiusM: integer("geofence_radius_m"),
 
   createdAt: timestamp("created_at")
     .defaultNow()

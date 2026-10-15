@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeftIcon, FileTextIcon } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -12,6 +12,8 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useIsHr } from "@/hooks/use-is-hr";
 import { EmployeeStatutoryTab } from "@/components/features/employee-statutory-tab";
 import { DocumentsPanel } from "@/components/features/documents-panel";
+import { PhotoEditor } from "@/components/shared/employee-photo";
+import { EmployeeCustomFields } from "@/components/features/employee-custom-fields";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { selectClass } from "@/components/shared/ui-bits";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +63,7 @@ type EmployeeDetail = {
   dateOfJoining: string | null;
   dateOfBirth?: string | null;
   userId?: string | null;
+  photoVersion?: number | null;
   departmentId: string | null;
   designationId: string | null;
   locationId: string | null;
@@ -328,7 +330,6 @@ export default function EmployeeProfilePage() {
   if (!employee) return null;
 
   const fullName = `${employee.firstName}${employee.lastName ? " " + employee.lastName : ""}`;
-  const initials = (employee.firstName[0] + (employee.lastName?.[0] ?? "")).toUpperCase();
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
@@ -354,11 +355,13 @@ export default function EmployeeProfilePage() {
       <Card className="mb-6">
         <CardContent className="flex flex-col gap-4 px-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <Avatar size="lg" className="size-16">
-              <AvatarFallback className="text-xl font-bold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <PhotoEditor
+              employeeId={employee.id}
+              name={fullName}
+              photoVersion={employee.photoVersion}
+              onChanged={load}
+              className="size-16 rounded-full text-xl"
+            />
             <div>
               <h1 className="text-2xl font-bold text-foreground">{fullName}</h1>
               <p className="text-sm text-muted-foreground">{employee.employeeCode}</p>
@@ -490,6 +493,7 @@ export default function EmployeeProfilePage() {
               )}
             </CardContent>
           </Card>
+          {isHr && <EmployeeCustomFields employeeId={id} />}
         </TabsContent>
 
         {/* Employment tab */}

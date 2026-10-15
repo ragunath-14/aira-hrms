@@ -11,6 +11,8 @@ export type EmployeeProfile = {
   phone: string | null;
   dateOfJoining: string | null;
   status: string;
+  // Changes whenever the profile photo does; null when there is none.
+  photoVersion: number | null;
   companyName: string;
   // The signed-in person's company role (owner, admin, hr, manager, employee...).
   role: string;

@@ -5,6 +5,7 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -67,6 +68,13 @@ export const employees = pgTable("employees", {
   ),
 
   status: text("status").notNull().default("active"),
+
+  // Values for the company's own extra employee fields (Settings -> Custom
+  // fields), keyed by field id.
+  customFields: jsonb("custom_fields")
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
 
   createdAt: timestamp("created_at")
     .defaultNow()

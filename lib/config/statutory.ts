@@ -35,6 +35,16 @@ export type StatutoryConfig = {
   tds: {
     enabled: boolean;
   };
+  // Labour Welfare Fund: a fixed amount taken in the chosen months (many states
+  // collect it once or twice a year). Rates differ by state, so there are no
+  // presets: enter the amounts your state sets.
+  lwf: {
+    enabled: boolean;
+    employeeAmount: number;
+    employerAmount: number;
+    // Calendar months (1-12) in which it is collected.
+    months: number[];
+  };
 };
 
 export const PT_PRESETS: Record<string, PtSlab[]> = {
@@ -103,6 +113,12 @@ export const STATUTORY_DEFAULTS: StatutoryConfig = {
   tds: {
     enabled: false,
   },
+  lwf: {
+    enabled: false,
+    employeeAmount: 0,
+    employerAmount: 0,
+    months: [12],
+  },
 };
 
 // Merges what a company stored over the defaults, group by group, so a company
@@ -122,9 +138,11 @@ export function resolveStatutory(settings: unknown): StatutoryConfig {
     } as StatutoryConfig[K];
   };
 
-  return { pf: group("pf"), esi: group("esi"), pt: group("pt"), tds: group("tds") };
+  return { pf: group("pf"), esi: group("esi"), pt: group("pt"), tds: group("tds"), lwf: group("lwf") };
 }
 
 export function anyStatutoryEnabled(config: StatutoryConfig) {
-  return config.pf.enabled || config.esi.enabled || config.pt.enabled || config.tds.enabled;
+  return (
+    config.pf.enabled || config.esi.enabled || config.pt.enabled || config.tds.enabled || config.lwf.enabled
+  );
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { payrollItems, payrollRecords, payrollRuns } from "@/db/schema";
+import { loanRepayments, loans, payrollItems, payrollRecords, payrollRuns } from "@/db/schema";
 import { requireRole } from "@/lib/auth/authorization";
 import { logAudit } from "@/lib/domain/audit";
 import { isUuid } from "@/lib/validation/ids";
@@ -39,6 +39,23 @@ export async function DELETE(
       .select({ runId: payrollItems.payrollRunId })
       .from(payrollItems)
       .where(eq(payrollItems.payrollRecordId, id));
+
+    // Loan instalments taken in this payslip go back onto the loan.
+    const repaid = await db
+      .select({ loanId: loanRepayments.loanId, amount: loanRepayments.amount })
+      .from(loanRepayments)
+      .where(eq(loanRepayments.payrollRecordId, id));
+
+    for (const row of repaid) {
+      await db
+        .update(loans)
+        .set({
+          balance: sql`${loans.balance} + ${row.amount}::numeric`,
+          status: "active",
+          updatedAt: new Date(),
+        })
+        .where(eq(loans.id, row.loanId));
+    }
 
     await db.delete(payrollRecords).where(eq(payrollRecords.id, id));
 

@@ -14,7 +14,10 @@ const pool =
   new Pool({
     connectionString: process.env.DATABASE_URL!,
     max: 10,
-    idleTimeoutMillis: 10 * 60 * 1000,
+    // Neon closes connections after about five idle minutes (when its compute
+    // suspends). Dropping idle connections a little sooner means a request never
+    // picks up one that Neon has already closed.
+    idleTimeoutMillis: 4 * 60 * 1000,
   });
 
 // An idle connection dropped by Neon would otherwise raise an unhandled
@@ -26,6 +29,40 @@ if (!globalForDb.__dbPool) {
 }
 
 globalForDb.__dbPool = pool;
+
+// A connection can still be closed from the other end between being checked in
+// and used again (Neon suspending, a network blip), and the first query on it
+// fails with "Connection terminated unexpectedly" before anything reaches the
+// database. Such a query is retried on another connection instead of becoming an
+// error page. Statements inside a transaction are not affected: those run on
+// their own client, not through pool.query.
+const DROPPED = /connection terminated|connection ended unexpectedly|ECONNRESET|socket hang up/i;
+const poolQuery = pool.query.bind(pool) as (...args: unknown[]) => unknown;
+
+const patchable = pool as unknown as { query: (...args: unknown[]) => unknown; __retrying?: boolean };
+
+// A hot reload re-runs this file against the same pool: wrap it only once.
+if (!patchable.__retrying) {
+  patchable.__retrying = true;
+  patchable.query = (...args: unknown[]) => {
+    const attempt = (tries: number): unknown => {
+      const result = poolQuery(...args);
+
+      // Callback-style calls return nothing to retry.
+      if (!result || typeof (result as Promise<unknown>).then !== "function") return result;
+
+      return (result as Promise<unknown>).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (tries < 3 && DROPPED.test(message)) return attempt(tries + 1);
+
+        throw error;
+      });
+    };
+
+    return attempt(1);
+  };
+}
 
 export const db = drizzle(pool);
 

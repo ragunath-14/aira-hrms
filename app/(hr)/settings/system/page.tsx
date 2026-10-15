@@ -32,6 +32,8 @@ type SystemConfig = {
   graceMinutes: number;
   halfDayAfter: string;
   minFullDayHours: number;
+  requirePunchLocation: boolean;
+  requirePunchPhoto: boolean;
 };
 
 const defaultConfig: SystemConfig = {
@@ -47,6 +49,8 @@ const defaultConfig: SystemConfig = {
   graceMinutes: 15,
   halfDayAfter: "13:00",
   minFullDayHours: 4,
+  requirePunchLocation: false,
+  requirePunchPhoto: false,
 };
 
 export default function SystemSettingsPage() {
@@ -309,6 +313,42 @@ export default function SystemSettingsPage() {
                 />
                 <p className="mt-1 text-xs text-muted-foreground">Checking out sooner than this marks the day Half day.</p>
               </div>
+            </div>
+            <div className="flex items-center justify-between border-t py-3">
+              <div className="pr-4">
+                <p className="font-semibold text-foreground">Require location to check in and out</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Employees must share their browser location. If their location (Locations page) has a punch fence, they can only punch within it, and outside it the punch is refused.
+                </p>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  aria-label="Require location to check in and out"
+                  checked={config.requirePunchLocation}
+                  onChange={(e) => setConfig({ ...config, requirePunchLocation: e.target.checked })}
+                  className="peer sr-only"
+                />
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary-foreground peer-focus:outline-none"></div>
+              </label>
+            </div>
+            <div className="flex items-center justify-between border-t py-3">
+              <div className="pr-4">
+                <p className="font-semibold text-foreground">Require a selfie to check in and out</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  A photo is taken with the camera at each punch and kept for HR to review, to discourage someone punching for a colleague.
+                </p>
+              </div>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  aria-label="Require a selfie to check in and out"
+                  checked={config.requirePunchPhoto}
+                  onChange={(e) => setConfig({ ...config, requirePunchPhoto: e.target.checked })}
+                  className="peer sr-only"
+                />
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary-foreground peer-focus:outline-none"></div>
+              </label>
             </div>
           </CardContent>
         </Card>

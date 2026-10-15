@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/authorization";
+import { payrollLockMessage } from "@/lib/domain/payroll-lock";
 import { logAudit } from "@/lib/domain/audit";
 
 export async function PATCH(
@@ -31,6 +32,26 @@ export async function PATCH(
     const { id } = await params;
     if (!isUuid(id)) {
       return Response.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    // A month already paid is final for this person.
+    const [record] = await db
+      .select({ employeeId: attendance.employeeId, date: attendance.attendanceDate })
+      .from(attendance)
+      .where(and(eq(attendance.id, id), eq(attendance.tenantId, tenant.id)))
+      .limit(1);
+
+    if (record) {
+      const locked = await payrollLockMessage({
+        tenantId: tenant.id,
+        settings: tenant.settings,
+        employeeId: record.employeeId,
+        startDate: record.date,
+        endDate: record.date,
+        affects: "attendance",
+      });
+
+      if (locked) return Response.json({ error: locked }, { status: 409 });
     }
 
     const body = await request.json();
@@ -180,6 +201,25 @@ export async function DELETE(
     const { id } = await params;
     if (!isUuid(id)) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    const [record] = await db
+      .select({ employeeId: attendance.employeeId, date: attendance.attendanceDate })
+      .from(attendance)
+      .where(and(eq(attendance.id, id), eq(attendance.tenantId, auth.tenant.id)))
+      .limit(1);
+
+    if (record) {
+      const locked = await payrollLockMessage({
+        tenantId: auth.tenant.id,
+        settings: auth.tenant.settings,
+        employeeId: record.employeeId,
+        startDate: record.date,
+        endDate: record.date,
+        affects: "attendance",
+      });
+
+      if (locked) return NextResponse.json({ error: locked }, { status: 409 });
     }
 
     const [deleted] = await db

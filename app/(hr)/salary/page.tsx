@@ -49,6 +49,7 @@ type SalaryStructure = {
 
 type SalaryComponent = {
   id: string;
+  employeeId: string | null;
   name: string;
   type: string;
   amount: string;
@@ -81,6 +82,7 @@ export default function SalaryPage() {
     name: "",
     type: "allowance",
     amount: "",
+    employeeId: "",
   });
 
   async function loadSalaryData() {
@@ -187,6 +189,7 @@ export default function SalaryPage() {
           name: componentForm.name,
           type: componentForm.type,
           amount: Number(componentForm.amount),
+          employeeId: componentForm.employeeId || null,
         }),
       });
 
@@ -353,7 +356,8 @@ export default function SalaryPage() {
                         </div>
 
                         <p className="mt-2 text-sm text-muted-foreground">
-                          Type: {component.type}
+                          Type: {component.type} ·{" "}
+                          {component.employeeId ? names[component.employeeId] ?? "One employee" : "Everyone"}
                         </p>
 
                         <p className="mt-3 text-2xl font-bold text-foreground">
@@ -436,7 +440,7 @@ export default function SalaryPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Salary Component</DialogTitle>
-            <DialogDescription>An allowance or deduction such as HRA or Provident Fund.</DialogDescription>
+            <DialogDescription>An allowance or deduction such as HRA. It applies to everyone, or to one employee only.</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={createComponent} className="space-y-4">
@@ -448,6 +452,21 @@ export default function SalaryPage() {
                 value={componentForm.name}
                 onChange={(e) => setComponentForm({ ...componentForm, name: e.target.value })}
               />
+            </div>
+
+            <div>
+              <Label htmlFor="component-employee" className="mb-1.5">Applies to</Label>
+              <select
+                id="component-employee"
+                className={selectClass}
+                value={componentForm.employeeId}
+                onChange={(e) => setComponentForm({ ...componentForm, employeeId: e.target.value })}
+              >
+                <option value="">Everyone in the company</option>
+                {employeeList.map((e) => (
+                  <option key={e.id} value={e.id}>{e.label}</option>
+                ))}
+              </select>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

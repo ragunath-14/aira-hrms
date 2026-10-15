@@ -15,6 +15,9 @@ type Form = {
   pan: string;
   uan: string;
   esiNumber: string;
+  bankName: string;
+  accountNumber: string;
+  ifsc: string;
   pfApplicable: boolean;
   esiApplicable: boolean;
   ptApplicable: boolean;
@@ -26,6 +29,9 @@ const empty: Form = {
   pan: "",
   uan: "",
   esiNumber: "",
+  bankName: "",
+  accountNumber: "",
+  ifsc: "",
   pfApplicable: true,
   esiApplicable: true,
   ptApplicable: true,
@@ -83,6 +89,7 @@ export function EmployeeStatutoryTab({ employeeId }: { employeeId: string }) {
         body: JSON.stringify({
           ...form,
           pan: form.pan.trim().toUpperCase(),
+          ifsc: form.ifsc.trim().toUpperCase(),
           declaredDeductions: Number(form.declaredDeductions) || 0,
         }),
       });
@@ -151,6 +158,42 @@ export function EmployeeStatutoryTab({ employeeId }: { employeeId: string }) {
                 value={form.esiNumber}
                 onChange={(e) => setForm({ ...form, esiNumber: e.target.value.replace(/\D/g, "") })}
               />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium text-foreground">Bank account for salary</p>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <Label htmlFor="st-bank" className="mb-1.5">Bank</Label>
+                <Input
+                  id="st-bank"
+                  placeholder="e.g. HDFC Bank"
+                  maxLength={80}
+                  value={form.bankName}
+                  onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="st-account" className="mb-1.5">Account number</Label>
+                <Input
+                  id="st-account"
+                  inputMode="numeric"
+                  maxLength={20}
+                  value={form.accountNumber}
+                  onChange={(e) => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, "") })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="st-ifsc" className="mb-1.5">IFSC</Label>
+                <Input
+                  id="st-ifsc"
+                  placeholder="HDFC0001234"
+                  maxLength={11}
+                  value={form.ifsc}
+                  onChange={(e) => setForm({ ...form, ifsc: e.target.value.toUpperCase() })}
+                />
+              </div>
             </div>
           </div>
 

@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatINR } from "@/lib/format/currency";
+import { MyLoans } from "@/components/features/my-loans";
 
 type Payslip = {
   id: string;
@@ -33,7 +34,7 @@ type Payslip = {
 
 const PAGE_SIZE = 10;
 
-export default function EmployeePayslipsPage() {
+function PayslipList() {
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -119,5 +120,14 @@ export default function EmployeePayslipsPage() {
         </>
       )}
     </Card>
+  );
+}
+
+export default function EmployeePayslipsPage() {
+  return (
+    <div className="space-y-6">
+      <PayslipList />
+      <MyLoans />
+    </div>
   );
 }

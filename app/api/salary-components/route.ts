@@ -5,7 +5,7 @@ import { salaryComponentSchema } from "@/lib/validation/schemas";
 import { logAudit } from "@/lib/domain/audit";
 import { requireRole } from "@/lib/auth/authorization";
 import { db } from "@/db";
-import { salaryComponents } from "@/db/schema";
+import { employees, salaryComponents } from "@/db/schema";
 
 export async function GET(request: Request) {
   try {
@@ -71,11 +71,25 @@ export async function POST(request: Request) {
     }
 
     const { name, type, amount } = parsed.data;
+    const employeeId = parsed.data.employeeId || null;
+
+    if (employeeId) {
+      const [person] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(and(eq(employees.id, employeeId), eq(employees.tenantId, auth.tenant.id)))
+        .limit(1);
+
+      if (!person) {
+        return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+      }
+    }
 
     const [component] = await db
       .insert(salaryComponents)
       .values({
         tenantId: auth.tenant.id,
+        employeeId,
         name,
         type,
         amount: String(amount),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { MapPinIcon, PlusIcon, PencilIcon } from "lucide-react";
+import { CrosshairIcon, MapPinIcon, PlusIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -42,6 +42,9 @@ type Location = {
   city: string | null;
   state: string | null;
   country: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  geofenceRadiusM: number | null;
 };
 
 const PAGE_SIZE = 10;
@@ -61,6 +64,10 @@ export default function LocationsPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [country, setCountry] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [radius, setRadius] = useState("");
+  const [locating, setLocating] = useState(false);
 
   async function loadLocations() {
     try {
@@ -95,8 +102,35 @@ export default function LocationsPage() {
     setCity("");
     setState("");
     setCountry("");
+    setLatitude("");
+    setLongitude("");
+    setRadius("");
     setError("");
     setShowForm(true);
+  }
+
+  function useMyLocation() {
+    if (!navigator.geolocation) {
+      setError("This browser cannot share its location.");
+      return;
+    }
+
+    setLocating(true);
+    setError("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLatitude(position.coords.latitude.toFixed(6));
+        setLongitude(position.coords.longitude.toFixed(6));
+        if (!radius) setRadius("200");
+        setLocating(false);
+      },
+      () => {
+        setError("Could not get your location. Allow location access in your browser, or type the coordinates.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
   }
 
   function openEdit(location: Location) {
@@ -106,6 +140,9 @@ export default function LocationsPage() {
     setCity(location.city ?? "");
     setState(location.state ?? "");
     setCountry(location.country ?? "");
+    setLatitude(location.latitude ?? "");
+    setLongitude(location.longitude ?? "");
+    setRadius(location.geofenceRadiusM ? String(location.geofenceRadiusM) : "");
     setError("");
     setShowForm(true);
   }
@@ -137,6 +174,9 @@ export default function LocationsPage() {
           city: city.trim(),
           state: state.trim(),
           country: country.trim(),
+          latitude: latitude.trim() === "" ? null : Number(latitude),
+          longitude: longitude.trim() === "" ? null : Number(longitude),
+          geofenceRadiusM: radius.trim() === "" ? null : Number(radius),
         }),
         },
       );
@@ -230,6 +270,7 @@ export default function LocationsPage() {
                   <TableHead>City</TableHead>
                   <TableHead>State</TableHead>
                   <TableHead>Country</TableHead>
+                  <TableHead>Punch fence</TableHead>
                   <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
@@ -250,6 +291,9 @@ export default function LocationsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {location.country || "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {location.geofenceRadiusM ? `within ${location.geofenceRadiusM} m` : "—"}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-right">
                       <Button
@@ -357,6 +401,35 @@ export default function LocationsPage() {
                 onChange={(event) => setCountry(event.target.value)}
                 placeholder="Country"
               />
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Punch fence (optional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    When the company requires location for check-in (Settings → System), employees of this
+                    location can only punch within this distance of the point below.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={useMyLocation} disabled={locating}>
+                  <CrosshairIcon /> {locating ? "Locating…" : "Use my current location"}
+                </Button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <Label htmlFor="location-lat" className="mb-1.5">Latitude</Label>
+                  <Input id="location-lat" type="number" step="any" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="13.082700" />
+                </div>
+                <div>
+                  <Label htmlFor="location-lng" className="mb-1.5">Longitude</Label>
+                  <Input id="location-lng" type="number" step="any" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="80.270700" />
+                </div>
+                <div>
+                  <Label htmlFor="location-radius" className="mb-1.5">Radius (metres)</Label>
+                  <Input id="location-radius" type="number" min="20" step="10" value={radius} onChange={(e) => setRadius(e.target.value)} placeholder="200" />
+                </div>
+              </div>
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}

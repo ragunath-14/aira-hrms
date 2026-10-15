@@ -28,6 +28,7 @@ type Holiday = {
   date: string;
   type: "public" | "optional" | "company";
   description: string | null;
+  locationId: string | null;
 };
 
 const TYPE_STYLES: Record<Holiday["type"], string> = {
@@ -61,6 +62,7 @@ export function HolidaysView({ canManage }: { canManage: boolean }) {
 
   const [year, setYear] = useState(thisYear);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [sites, setSites] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -71,10 +73,21 @@ export function HolidaysView({ canManage }: { canManage: boolean }) {
     date: "",
     type: "public",
     description: "",
+    locationId: "",
   });
 
   const [toDelete, setToDelete] = useState<Holiday | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Locations, so a holiday can be limited to one branch (HR only).
+  useEffect(() => {
+    if (!canManage) return;
+
+    fetch("/api/locations")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => Array.isArray(list) && setSites(list.map((l: { id: string; name: string }) => ({ id: l.id, name: l.name }))))
+      .catch(() => {});
+  }, [canManage]);
 
   async function load(y = year) {
     try {
@@ -131,6 +144,7 @@ export function HolidaysView({ canManage }: { canManage: boolean }) {
           date: form.date,
           type: form.type,
           description: form.description.trim() || null,
+          locationId: form.locationId || null,
         }),
       });
 
@@ -144,7 +158,7 @@ export function HolidaysView({ canManage }: { canManage: boolean }) {
 
       toast.success("Holiday added");
       setShowForm(false);
-      setForm({ name: "", date: "", type: "public", description: "" });
+      setForm({ name: "", date: "", type: "public", description: "", locationId: "" });
 
       if (Number(form.date.slice(0, 4)) !== year) {
         setYear(Number(form.date.slice(0, 4)));
@@ -279,6 +293,11 @@ export function HolidaysView({ canManage }: { canManage: boolean }) {
                             {h.description}
                           </p>
                         )}
+                        {h.locationId && (
+                          <p className="truncate text-xs text-muted-foreground">
+                            Only at {sites.find((x) => x.id === h.locationId)?.name ?? "one location"}
+                          </p>
+                        )}
                       </div>
 
                       <span
@@ -356,6 +375,23 @@ export function HolidaysView({ canManage }: { canManage: boolean }) {
                   <option value="company">Company</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <Label htmlFor="holiday-location" className="mb-1.5">
+                Applies to
+              </Label>
+              <select
+                id="holiday-location"
+                value={form.locationId}
+                onChange={(e) => setForm({ ...form, locationId: e.target.value })}
+                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="">The whole company</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>Only {site.name}</option>
+                ))}
+              </select>
             </div>
 
             <div>

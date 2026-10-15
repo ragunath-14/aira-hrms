@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attendance } from "@/db/schema/attendance";
@@ -115,6 +115,11 @@ export async function GET(request: Request) {
         checkOut: attendance.checkOut,
         status: attendance.status,
         notes: attendance.notes,
+        checkInDistanceM: attendance.checkInDistanceM,
+        checkOutDistanceM: attendance.checkOutDistanceM,
+        hasCheckInLocation: sql<boolean>`${attendance.checkInLat} is not null`,
+        hasCheckInPhoto: sql<boolean>`exists (select 1 from attendance_photos p where p.attendance_id = ${attendance.id} and p.kind = 'in')`,
+        hasCheckOutPhoto: sql<boolean>`exists (select 1 from attendance_photos p where p.attendance_id = ${attendance.id} and p.kind = 'out')`,
         createdAt: attendance.createdAt,
         updatedAt: attendance.updatedAt,
       })

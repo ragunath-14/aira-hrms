@@ -13,15 +13,15 @@ import {
   LogOutIcon,
   MegaphoneIcon,
   UserIcon,
-  WalletCardsIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { InsightsPanel } from "@/components/features/insights-panel";
 import { useEmployee } from "@/components/layout/employee-context";
+import { PhotoEditor } from "@/components/shared/employee-photo";
+import { usePunch } from "@/components/features/use-punch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate, getDisplayPrefs } from "@/lib/format/date";
+import { getDisplayPrefs } from "@/lib/format/date";
 import { cn } from "cn";
 
 type TodayAttendance = {
@@ -40,11 +40,6 @@ type Stats = {
   onTimePct: number | null;
   pendingLeaves: number;
   pendingLeaveLabel: string;
-  balanceTotal: number;
-  balanceChips: string[];
-  payslipCount: number;
-  latestPayslip: string | null;
-  documentCount: number;
 };
 
 const EMPTY_STATS: Stats = {
@@ -52,31 +47,15 @@ const EMPTY_STATS: Stats = {
   onTimePct: null,
   pendingLeaves: 0,
   pendingLeaveLabel: "",
-  balanceTotal: 0,
-  balanceChips: [],
-  payslipCount: 0,
-  latestPayslip: null,
-  documentCount: 0,
 };
 
-function monthLabel(period: string) {
-  const [y, m] = period.split("-").map(Number);
-  if (!y || !m) return period;
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-IN", {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 export default function EmployeeDashboardPage() {
-  const { employee, unreadCount } = useEmployee();
+  const { employee, reload } = useEmployee();
 
   const [todayAttendance, setTodayAttendance] = useState<TodayAttendance | null>(null);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [shiftStart, setShiftStart] = useState("09:30");
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -85,13 +64,10 @@ export default function EmployeeDashboardPage() {
         return res.ok ? res.json() : null;
       };
 
-      const [today, attendance, leaves, balances, payslips, docs, display] = await Promise.all([
+      const [today, attendance, leaves, display] = await Promise.all([
         get("/api/attendance/today"),
         get("/api/employee/attendance"),
         get("/api/employee/leave-requests"),
-        get("/api/employee/leave-balances"),
-        get("/api/employee/payslips"),
-        get("/api/employee/documents"),
         get("/api/settings/display"),
       ]);
 
@@ -123,32 +99,6 @@ export default function EmployeeDashboardPage() {
               : "";
       }
 
-      if (Array.isArray(balances) && balances.length > 0) {
-        const year = Math.max(...balances.map((b: { year: number }) => b.year));
-        const current = balances.filter((b: { year: number }) => b.year === year);
-        next.balanceTotal = current.reduce(
-          (sum: number, b: { remainingDays: number }) => sum + b.remainingDays,
-          0,
-        );
-        next.balanceChips = current
-          .slice(0, 3)
-          .map(
-            (b: { leaveType: string | null; remainingDays: number }) =>
-              `${(b.leaveType ?? "Leave").split(" ")[0]}: ${b.remainingDays}`,
-          );
-      }
-
-      if (Array.isArray(payslips)) {
-        next.payslipCount = payslips.length;
-        const latest = [...payslips]
-          .map((p: { payrollPeriod: string }) => p.payrollPeriod)
-          .sort()
-          .pop();
-        next.latestPayslip = latest ?? null;
-      }
-
-      if (Array.isArray(docs)) next.documentCount = docs.length;
-
       setStats(next);
     } finally {
       setLoading(false);
@@ -159,25 +109,7 @@ export default function EmployeeDashboardPage() {
     loadAll();
   }, [loadAll]);
 
-  async function punch(kind: "check-in" | "check-out") {
-    setBusy(true);
-
-    try {
-      const res = await fetch(`/api/attendance/${kind}`, { method: "POST" });
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast.error(typeof data.error === "string" ? data.error : "Request failed");
-      } else {
-        toast.success(kind === "check-in" ? "Checked in" : "Checked out");
-        await loadAll();
-      }
-    } catch {
-      toast.error("Request failed. Check your connection and try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { punch, busy, dialog: punchDialog } = usePunch(loadAll);
 
   if (!employee) return null;
 
@@ -195,25 +127,44 @@ export default function EmployeeDashboardPage() {
     );
   }
 
-  const initials = `${employee.firstName[0] ?? ""}${employee.lastName?.[0] ?? ""}`.toUpperCase();
   const fullName = `${employee.firstName}${employee.lastName ? ` ${employee.lastName}` : ""}`;
   const record = todayAttendance?.attendance ?? null;
   const checkedIn = !!record?.checkIn;
   const checkedOut = !!record?.checkOut;
 
+  const { timezone } = getDisplayPrefs();
+  const timeOf = (iso: string) =>
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: true }).format(
+      new Date(iso),
+    );
+  const [shiftHour, shiftMinute] = shiftStart.split(":").map(Number);
+  const shiftLabel = new Date(Date.UTC(2000, 0, 1, shiftHour, shiftMinute)).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  });
+
   return (
     <div className="space-y-6">
       {/* Profile */}
       <section className="flex flex-wrap items-center gap-5 rounded-2xl border bg-card p-6 shadow-sm">
-        <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-indigo-500 text-2xl font-bold text-white shadow-md">
-          {initials}
-        </div>
+        <PhotoEditor
+          employeeId={employee.id}
+          name={fullName}
+          photoVersion={employee.photoVersion}
+          onChanged={reload}
+          className="size-20 rounded-2xl text-2xl"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="truncate text-2xl font-bold text-foreground">{fullName}</h1>
             <span className="rounded-full bg-primary px-3 py-0.5 text-xs font-semibold capitalize text-primary-foreground">
               {employee.status.replace(/_/g, " ")}
             </span>
+            <Button variant="outline" size="sm" render={<Link href="/employee/profile" />}>
+              <UserIcon /> View My Profile
+            </Button>
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">{employee.employeeCode}</span>
@@ -232,24 +183,48 @@ export default function EmployeeDashboardPage() {
             )}
           </div>
         </div>
-        <Button variant="outline" size="lg" render={<Link href="/employee/profile" />}>
-          <UserIcon /> View My Profile
-        </Button>
+
+        <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+          {!checkedIn && (
+            <Button size="lg" disabled={busy} onClick={() => punch("check-in")} className="h-11 gap-2 rounded-xl px-6 text-base">
+              <LogInIcon className="size-5" />
+              {busy ? "Processing…" : "Check In"}
+            </Button>
+          )}
+          {checkedIn && !checkedOut && (
+            <Button size="lg" disabled={busy} onClick={() => punch("check-out")} className="h-11 gap-2 rounded-xl px-6 text-base">
+              <LogOutIcon className="size-5" />
+              {busy ? "Processing…" : "Check Out"}
+            </Button>
+          )}
+          {checkedOut && (
+            <span className="inline-flex h-11 items-center rounded-xl border border-sky-200 bg-sky-50 px-5 text-sm font-semibold text-sky-700">
+              Done for today
+            </span>
+          )}
+          <p className="text-xs text-muted-foreground sm:text-right">
+            {record?.checkIn ? (
+              <>
+                In <strong className="text-foreground">{timeOf(record.checkIn)}</strong>
+                {record.checkOut && (
+                  <>
+                    {" "}· Out <strong className="text-foreground">{timeOf(record.checkOut)}</strong>
+                  </>
+                )}
+              </>
+            ) : (
+              <>Not checked in · Shift starts {shiftLabel}</>
+            )}
+            {" · "}
+            <Link href="/employee/tickets" className="font-medium text-primary hover:underline">
+              Regularize
+            </Link>
+          </p>
+        </div>
       </section>
 
-      {/* Today's attendance */}
-      <AttendanceBanner
-        record={record}
-        today={todayAttendance?.today ?? ""}
-        shiftStart={shiftStart}
-        checkedIn={checkedIn}
-        checkedOut={checkedOut}
-        busy={busy}
-        onPunch={punch}
-      />
-
       {/* KPIs */}
-      <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-label="Summary">
+      <section className="grid gap-5 sm:grid-cols-2" aria-label="Summary">
         <Kpi
           label="Attendance records"
           value={stats.monthCount}
@@ -267,42 +242,6 @@ export default function EmployeeDashboardPage() {
           tone="orange"
           chip={stats.pendingLeaveLabel || "Nothing pending"}
           chipTone={stats.pendingLeaves > 0 ? "orange" : "gray"}
-        />
-        <Kpi
-          label="Leave balances"
-          value={stats.balanceTotal}
-          caption="Total remaining days"
-          icon={ClipboardListIcon}
-          tone="indigo"
-          chip={stats.balanceChips.join(" | ") || "No balances"}
-          chipTone="gray"
-        />
-        <Kpi
-          label="Payslips"
-          value={stats.payslipCount}
-          caption="Salary statements"
-          icon={WalletCardsIcon}
-          tone="green"
-          chip={stats.latestPayslip ? `${monthLabel(stats.latestPayslip)} ready` : "None yet"}
-          chipTone={stats.latestPayslip ? "gray" : "gray"}
-        />
-        <Kpi
-          label="Documents"
-          value={stats.documentCount}
-          caption="Files on record"
-          icon={FileTextIcon}
-          tone="cyan"
-          chip={stats.documentCount > 0 ? "On file" : "None yet"}
-          chipTone={stats.documentCount > 0 ? "green" : "gray"}
-        />
-        <Kpi
-          label="Unread notifications"
-          value={unreadCount}
-          caption="Alerts require review"
-          icon={BellIcon}
-          tone="purple"
-          chip={unreadCount > 0 ? "Action needed" : "All caught up"}
-          chipTone={unreadCount > 0 ? "purple" : "gray"}
         />
       </section>
 
@@ -323,164 +262,9 @@ export default function EmployeeDashboardPage() {
       </section>
 
       <InsightsPanel basePath="/employee" variant="workspace" currentEmployeeId={employee.id} />
+
+      {punchDialog}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function useClock(timeZone: string) {
-  const [now, setNow] = useState<Date | null>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNow(new Date());
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, [timeZone]);
-
-  return now;
-}
-
-function AttendanceBanner({
-  record,
-  today,
-  shiftStart,
-  checkedIn,
-  checkedOut,
-  busy,
-  onPunch,
-}: {
-  record: TodayAttendance["attendance"];
-  today: string;
-  shiftStart: string;
-  checkedIn: boolean;
-  checkedOut: boolean;
-  busy: boolean;
-  onPunch: (kind: "check-in" | "check-out") => void;
-}) {
-  const { timezone } = getDisplayPrefs();
-  const now = useClock(timezone);
-
-  const clock = now
-    ? new Intl.DateTimeFormat("en-US", {
-        timeZone: timezone,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      }).format(now)
-    : "--:--:--";
-
-  const weekday = now
-    ? new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "long" }).format(now)
-    : "";
-
-  const time = (iso: string) =>
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    }).format(new Date(iso));
-
-  const [h, m] = shiftStart.split(":").map(Number);
-  const shiftLabel = new Date(Date.UTC(2000, 0, 1, h, m)).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "UTC",
-  });
-
-  const state = checkedOut
-    ? { label: "Completed", cls: "border-sky-400/40 bg-sky-400/15 text-sky-200" }
-    : checkedIn
-      ? { label: "Checked In", cls: "border-emerald-400/40 bg-emerald-400/15 text-emerald-200" }
-      : { label: "Not Checked In", cls: "border-amber-400/50 bg-amber-400/15 text-amber-200" };
-
-  return (
-    <section
-      aria-label="Today's attendance"
-      className="relative overflow-hidden rounded-2xl bg-linear-to-br from-slate-950 via-slate-900 to-indigo-950 p-6 text-white shadow-lg sm:p-8"
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/25 blur-3xl"
-      />
-
-      <div className="relative flex flex-wrap items-center justify-between gap-6">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-md border border-primary/40 bg-primary/20 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-sky-200">
-              Today&apos;s attendance
-            </span>
-            <span className="text-sm text-slate-300">
-              {weekday}
-              {today ? `, ${formatDate(today)}` : ""}
-            </span>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <p className="font-mono text-4xl font-bold tabular-nums tracking-tight sm:text-5xl" aria-live="off">
-              {clock}
-            </p>
-            <span className={cn("rounded-md border px-2.5 py-1 text-xs font-semibold", state.cls)}>
-              {state.label}
-            </span>
-          </div>
-
-          <p className="mt-4 text-sm text-slate-300">
-            {record?.checkIn ? (
-              <>
-                Checked in at <strong className="text-white">{time(record.checkIn)}</strong>
-                {record.checkOut && (
-                  <>
-                    {" "}and out at <strong className="text-white">{time(record.checkOut)}</strong>
-                  </>
-                )}
-                . Shift starts at <strong className="text-white">{shiftLabel}</strong>.
-              </>
-            ) : (
-              <>
-                No attendance record registered for today yet. Shift starts at{" "}
-                <strong className="text-white">{shiftLabel}</strong>.
-              </>
-            )}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {!checkedIn && (
-            <Button
-              size="lg"
-              disabled={busy}
-              onClick={() => onPunch("check-in")}
-              className="h-12 gap-2 rounded-xl px-6 text-base shadow-lg shadow-primary/30"
-            >
-              <LogInIcon className="size-5" />
-              {busy ? "Processing…" : "Check In"}
-            </Button>
-          )}
-          {checkedIn && !checkedOut && (
-            <Button
-              size="lg"
-              disabled={busy}
-              onClick={() => onPunch("check-out")}
-              className="h-12 gap-2 rounded-xl px-6 text-base shadow-lg shadow-primary/30"
-            >
-              <LogOutIcon className="size-5" />
-              {busy ? "Processing…" : "Check Out"}
-            </Button>
-          )}
-          <Link
-            href="/employee/tickets"
-            className="inline-flex h-12 items-center rounded-xl border border-white/15 bg-white/10 px-5 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            Regularize Request
-          </Link>
-        </div>
-      </div>
-    </section>
   );
 }
 

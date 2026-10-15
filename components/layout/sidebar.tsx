@@ -110,6 +110,11 @@ const payrollItems: NavItem[] = [
     icon: <WalletIcon />,
   },
   {
+    label: "Loans & Advances",
+    href: "/loans",
+    icon: <MoneyIcon />,
+  },
+  {
     label: "Statutory Report",
     href: "/statutory-report",
     icon: <ReportIcon />,
@@ -129,6 +134,12 @@ const reportItems: NavItem[] = [
     label: "Reports",
     href: "/reports",
     icon: <ReportIcon />,
+  },
+  {
+    label: "Muster Report",
+    href: "/muster-report",
+    icon: <ReportIcon />,
+    roles: ["owner", "admin", "hr"],
   },
 ];
 
@@ -184,9 +195,19 @@ const settingsItems: NavItem[] = [
     icon: <PerformanceIcon />,
   },
   {
+    label: "Payroll Rules",
+    href: "/settings/payroll-rules",
+    icon: <MoneyIcon />,
+  },
+  {
     label: "Payroll Compliance",
     href: "/settings/payroll-compliance",
     icon: <MoneyIcon />,
+  },
+  {
+    label: "Custom Fields",
+    href: "/settings/custom-fields",
+    icon: <HierarchyIcon />,
   },
   {
     label: "Plan & Usage",

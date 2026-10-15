@@ -9,6 +9,7 @@ import {
 
 import { tenants } from "./tenants";
 import { users } from "./users";
+import { locations } from "./organization";
 
 // Company holiday calendar. `date` is a plain YYYY-MM-DD string so it never
 // shifts across time zones.
@@ -29,6 +30,9 @@ export const holidays = pgTable(
     type: text("type").notNull().default("public"),
 
     description: text("description"),
+
+    // Null = the whole company; otherwise only people working at this location.
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "cascade" }),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

@@ -45,11 +45,13 @@ type Row = {
   esiEmployer: number;
   professionalTax: number;
   tds: number;
+  lwfEmployee: number;
+  lwfEmployer: number;
 };
 
 type Report = {
   period: string;
-  enabled: { pf: boolean; esi: boolean; pt: boolean; tds: boolean };
+  enabled: { pf: boolean; esi: boolean; pt: boolean; tds: boolean; lwf: boolean };
   rows: Row[];
   totals: {
     employees: number;
@@ -62,6 +64,8 @@ type Report = {
     esiEmployer: number;
     professionalTax: number;
     tds: number;
+    lwfEmployee: number;
+    lwfEmployer: number;
   };
 };
 
@@ -106,22 +110,24 @@ export default function StatutoryReportPage() {
     };
   }, [period]);
 
-  async function downloadEcr() {
-    const res = await fetch(`/api/payroll/statutory-report?period=${period}&format=ecr`);
+  async function downloadFile(format: string, filename: string, failure: string) {
+    const res = await fetch(`/api/payroll/statutory-report?period=${period}&format=${format}`);
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      toast.error(errorText(data?.error, "Could not build the PF return file"));
+      toast.error(errorText(data?.error, failure));
       return;
     }
 
     const url = URL.createObjectURL(await res.blob());
     const link = document.createElement("a");
     link.href = url;
-    link.download = `ecr-${period}.txt`;
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
   }
+
+  const downloadEcr = () => downloadFile("ecr", `ecr-${period}.txt`, "Could not build the PF return file");
 
   function exportCsv() {
     if (!report) return;
@@ -131,12 +137,12 @@ export default function StatutoryReportPage() {
       [
         "Code", "Employee", "PAN", "UAN", "ESI number", "Gross",
         "PF wage", "PF employee", "PF employer", "EPS", "EPF (employer)",
-        "ESI wage", "ESI employee", "ESI employer", "Professional tax", "TDS", "Net pay",
+        "ESI wage", "ESI employee", "ESI employer", "Professional tax", "TDS", "LWF employee", "LWF employer", "Net pay",
       ],
       report.rows.map((r) => [
         r.code, r.name, r.pan, r.uan, r.esiNumber, r.gross,
         r.pfWage, r.pfEmployee, r.pfEmployer, r.eps, r.epf,
-        r.esiWage, r.esiEmployee, r.esiEmployer, r.professionalTax, r.tds, r.net,
+        r.esiWage, r.esiEmployee, r.esiEmployer, r.professionalTax, r.tds, r.lwfEmployee, r.lwfEmployer, r.net,
       ]),
     );
   }
@@ -161,9 +167,27 @@ export default function StatutoryReportPage() {
         }
       />
 
-      <div className="mb-6 max-w-xs">
-        <Label htmlFor="sr-month" className="mb-1.5">Month</Label>
-        <Input id="sr-month" type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+      <div className="mb-6 flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="w-full max-w-xs">
+          <Label htmlFor="sr-month" className="mb-1.5">Month</Label>
+          <Input id="sr-month" type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Filing files:</span>
+          <Button size="sm" variant="outline" disabled={!report || rows.length === 0} onClick={() => downloadFile("esic", `esic-${period}.csv`, "Could not build the ESIC file")}>
+            <DownloadIcon /> ESIC
+          </Button>
+          <Button size="sm" variant="outline" disabled={!report || rows.length === 0} onClick={() => downloadFile("pt", `professional-tax-${period}.csv`, "Could not build the professional tax file")}>
+            <DownloadIcon /> Professional tax
+          </Button>
+          <Button size="sm" variant="outline" disabled={!report || rows.length === 0} onClick={() => downloadFile("tds", `tds-${period}.csv`, "Could not build the TDS file")}>
+            <DownloadIcon /> TDS
+          </Button>
+          <Button size="sm" variant="outline" disabled={!report || rows.length === 0} onClick={() => downloadFile("lwf", `lwf-${period}.csv`, "Could not build the LWF file")}>
+            <DownloadIcon /> LWF
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -182,14 +206,14 @@ export default function StatutoryReportPage() {
       )}
 
       {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full rounded-xl" />
           ))}
         </div>
       ) : report && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
               label="Provident fund to pay"
               value={formatINR(report.totals.pfEmployee + report.totals.pfEmployer)}
@@ -202,6 +226,11 @@ export default function StatutoryReportPage() {
             />
             <StatCard label="Professional tax" value={formatINR(report.totals.professionalTax)} icon={FileTextIcon} />
             <StatCard label="TDS deducted" value={formatINR(report.totals.tds)} icon={FileTextIcon} />
+            <StatCard
+              label="Labour welfare fund"
+              value={formatINR(report.totals.lwfEmployee + report.totals.lwfEmployer)}
+              icon={FileTextIcon}
+            />
           </div>
 
           <Card className="mt-6 overflow-hidden p-0">

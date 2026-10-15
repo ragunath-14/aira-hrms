@@ -99,6 +99,17 @@ export function computePt(gross: number, config: StatutoryConfig["pt"], applicab
   return cents(slabAmount(gross, config.slabs));
 }
 
+// ---- Labour Welfare Fund --------------------------------------------------
+
+// A fixed amount, only in the months the company has chosen.
+export function computeLwf(period: string, config: StatutoryConfig["lwf"]) {
+  const month = Number(period.slice(5, 7));
+
+  if (!config.enabled || !config.months.includes(month)) return { employee: 0, employer: 0 };
+
+  return { employee: cents(config.employeeAmount), employer: cents(config.employerAmount) };
+}
+
 // ---- Income tax (TDS on salary) -------------------------------------------
 
 type TaxSlab = { upTo: number; rate: number };
@@ -229,6 +240,7 @@ export function computeStatutory(input: {
   const pf = computePf(basic, config.pf, profile.pfApplicable);
   const esi = computeEsi(gross, config.esi, profile.esiApplicable);
   const professionalTax = computePt(gross, config.pt, profile.ptApplicable);
+  const lwf = computeLwf(input.period, config.lwf);
 
   const tds = config.tds.enabled
     ? computeTds({
@@ -250,8 +262,10 @@ export function computeStatutory(input: {
     esiEmployer: esi.employer,
     professionalTax,
     tds,
+    lwfEmployee: lwf.employee,
+    lwfEmployer: lwf.employer,
     // What comes off the employee's pay. Employer contributions are a cost to
     // the company and are not deducted.
-    employeeDeductions: cents(pf.employee + esi.employee + professionalTax + tds),
+    employeeDeductions: cents(pf.employee + esi.employee + professionalTax + tds + lwf.employee),
   };
 }

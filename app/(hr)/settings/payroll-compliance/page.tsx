@@ -379,6 +379,56 @@ export default function PayrollCompliancePage() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle>Labour Welfare Fund (LWF)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Toggle
+                checked={config.lwf.enabled}
+                onChange={(enabled) => update("lwf", { enabled })}
+                label="Deduct Labour Welfare Fund"
+                hint="A fixed amount, taken only in the months you choose. Rates are set by each state, so enter the amounts for your state."
+                disabled={readOnly}
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Rate id="lwf-ee" label="Employee amount" suffix="₹" value={config.lwf.employeeAmount} onChange={(employeeAmount) => update("lwf", { employeeAmount })} disabled={readOnly} />
+                <Rate id="lwf-er" label="Employer amount" suffix="₹" value={config.lwf.employerAmount} onChange={(employerAmount) => update("lwf", { employerAmount })} disabled={readOnly} />
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium text-foreground">Collected in</p>
+                <div className="flex flex-wrap gap-2">
+                  {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((name, index) => {
+                    const month = index + 1;
+                    const on = config.lwf.months.includes(month);
+
+                    return (
+                      <label
+                        key={name}
+                        className={`flex cursor-pointer items-center rounded-md border px-2.5 py-1 text-sm ${on ? "border-primary bg-primary/10 text-primary" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          disabled={readOnly}
+                          checked={on}
+                          onChange={() =>
+                            update("lwf", {
+                              months: on
+                                ? config.lwf.months.filter((m) => m !== month)
+                                : [...config.lwf.months, month].sort((a, b) => a - b),
+                            })
+                          }
+                        />
+                        {name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {!readOnly && (
             <div className="flex justify-end">
               <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save settings"}</Button>

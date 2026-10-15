@@ -1,12 +1,13 @@
 import { eq, and } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attendance } from "@/db/schema/attendance";
+import { attendance, attendancePhotos } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/authorization";
 import { logAudit } from "@/lib/domain/audit";
 import { dateInZone, resolveSettings } from "@/lib/config/settings";
+import { checkPunchProof } from "@/lib/domain/punch-proof";
 export async function POST(request: Request) {
   try {
     // requireRole already resolves the tenant/user context internally —
@@ -79,6 +80,13 @@ export async function POST(request: Request) {
       );
     }
 
+    const body = await request.json().catch(() => ({}));
+    const checked = await checkPunchProof({ settings, locationId: employee.locationId, body });
+
+    if ("response" in checked) return checked.response;
+
+    const { proof } = checked;
+
     const checkOut = new Date();
 
     // A day shorter than the company's minimum counts as a half day.
@@ -97,6 +105,9 @@ export async function POST(request: Request) {
         checkOut,
         breakType: null,
         breakUntil: null,
+        checkOutLat: proof.latitude === null ? null : proof.latitude.toFixed(6),
+        checkOutLng: proof.longitude === null ? null : proof.longitude.toFixed(6),
+        checkOutDistanceM: proof.distanceM,
         ...(shortDay ? { status: "half_day" } : {}),
         updatedAt: new Date(),
       })
@@ -107,6 +118,19 @@ export async function POST(request: Request) {
         ),
       )
       .returning();
+
+    if (proof.photo) {
+      await db
+        .insert(attendancePhotos)
+        .values({
+          attendanceId: updatedAttendance.id,
+          kind: "out",
+          tenantId: tenant.id,
+          mimeType: proof.photo.mimeType,
+          data: proof.photo.data,
+        })
+        .onConflictDoNothing();
+    }
 
     await logAudit({
       tenantId: tenant.id,

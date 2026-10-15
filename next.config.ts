@@ -24,7 +24,9 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    // The camera and location are used only by this site's own pages (selfie and
+    // location at check-in). Embedded content still gets nothing.
+    value: "camera=(self), microphone=(), geolocation=(self), payment=(), usb=()",
   },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "X-DNS-Prefetch-Control", value: "off" },

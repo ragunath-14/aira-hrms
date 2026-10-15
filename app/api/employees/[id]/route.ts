@@ -10,6 +10,7 @@ import { locations } from "@/db/schema/organization";
 import { attendance } from "@/db/schema/attendance";
 import { leaveRequests, leaveTypes, leaveBalances } from "@/db/schema/leaves";
 import { payrollRecords } from "@/db/schema/payroll";
+import { employeePhotos } from "@/db/schema/employee-photos";
 import { zodMessage } from "@/lib/format/error-text";
 import { findEmployeeDuplicate } from "@/lib/domain/employee-checks";
 import { requireRole } from "@/lib/auth/authorization";
@@ -118,8 +119,15 @@ export async function GET(
       ).orderBy(payrollRecords.createdAt),
     ]);
 
+    const [photo] = await db
+      .select({ updatedAt: employeePhotos.updatedAt })
+      .from(employeePhotos)
+      .where(eq(employeePhotos.employeeId, employee.id))
+      .limit(1);
+
     return NextResponse.json({
       ...employee,
+      photoVersion: photo ? photo.updatedAt.getTime() : null,
       department: dept[0] ?? null,
       designation: desig[0] ?? null,
       location: loc[0] ?? null,

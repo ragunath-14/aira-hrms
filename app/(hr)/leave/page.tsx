@@ -77,6 +77,7 @@ type LeaveType = {
   maxConsecutiveDays: number | null;
   minNoticeDays: number | null;
   encashmentAllowed: boolean;
+  isPaid: boolean;
   rulesText: string | null;
 };
 
@@ -180,6 +181,7 @@ export default function LeaveManagementPage() {
   const [typeMaxConsecutive, setTypeMaxConsecutive] = useState("");
   const [typeMinNotice, setTypeMinNotice] = useState("");
   const [typeEncashmentAllowed, setTypeEncashmentAllowed] = useState("false");
+  const [typePaid, setTypePaid] = useState("true");
   const [typeRulesText, setTypeRulesText] = useState("");
 
   const [editingType, setEditingType] = useState<LeaveType | null>(null);
@@ -187,6 +189,7 @@ export default function LeaveManagementPage() {
   const [editMaxConsecutive, setEditMaxConsecutive] = useState("");
   const [editMinNotice, setEditMinNotice] = useState("");
   const [editEncashmentAllowed, setEditEncashmentAllowed] = useState("false");
+  const [editPaid, setEditPaid] = useState("true");
   const [editRulesText, setEditRulesText] = useState("");
   const [savingRules, setSavingRules] = useState(false);
 
@@ -580,6 +583,7 @@ export default function LeaveManagementPage() {
           maxConsecutiveDays: typeMaxConsecutive ? Number(typeMaxConsecutive) : null,
           minNoticeDays: typeMinNotice ? Number(typeMinNotice) : null,
           encashmentAllowed: typeEncashmentAllowed === "true",
+          isPaid: typePaid === "true",
           rulesText: typeRulesText.trim(),
         }),
       });
@@ -623,6 +627,7 @@ export default function LeaveManagementPage() {
     setEditMaxConsecutive(leaveType.maxConsecutiveDays?.toString() ?? "");
     setEditMinNotice(leaveType.minNoticeDays?.toString() ?? "");
     setEditEncashmentAllowed(leaveType.encashmentAllowed ? "true" : "false");
+    setEditPaid(leaveType.isPaid === false ? "false" : "true");
     setEditRulesText(leaveType.rulesText ?? "");
   }
 
@@ -642,6 +647,7 @@ export default function LeaveManagementPage() {
           maxConsecutiveDays: editMaxConsecutive ? Number(editMaxConsecutive) : null,
           minNoticeDays: editMinNotice ? Number(editMinNotice) : null,
           encashmentAllowed: editEncashmentAllowed === "true",
+          isPaid: editPaid === "true",
           rulesText: editRulesText.trim(),
         }),
       });
@@ -1168,6 +1174,19 @@ export default function LeaveManagementPage() {
                         </Select>
                       </div>
 
+                      <div>
+                        <Label className="mb-2">Pay</Label>
+                        <Select value={typePaid} onValueChange={(value) => setTypePaid(value ?? "true")}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="true">Paid leave</SelectItem>
+                            <SelectItem value="false">Unpaid (loss of pay)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
                       <div className="md:col-span-2">
                         <Label className="mb-2">Rules Text</Label>
                         <Input
@@ -1648,6 +1667,19 @@ export default function LeaveManagementPage() {
                 <SelectContent>
                   <SelectItem value="false">Not Allowed</SelectItem>
                   <SelectItem value="true">Allowed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2">Pay</Label>
+              <Select value={editPaid} onValueChange={(value) => setEditPaid(value ?? "true")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Paid leave</SelectItem>
+                  <SelectItem value="false">Unpaid (loss of pay)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

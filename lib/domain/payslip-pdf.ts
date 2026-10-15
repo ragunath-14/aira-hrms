@@ -31,7 +31,15 @@ export type PayslipData = {
     tds: number;
     pfEmployer: number;
     esiEmployer: number;
+    lwfEmployee?: number;
   };
+  // Days paid, when pay follows attendance.
+  days?: { inPeriod: number; paid: number; lop: number };
+  overtime?: { hours: number; pay: number };
+  // One-off earnings (bonus, arrears) and deductions that make up part of the
+  // totals above, itemised.
+  extraEarnings?: { label: string; amount: number }[];
+  extraDeductions?: { label: string; amount: number }[];
 };
 
 const inr = (n: number) =>
@@ -162,6 +170,12 @@ export async function buildPayslipPdf(data: PayslipData): Promise<Uint8Array> {
     y -= 34;
   }
 
+  if (data.days) {
+    detail("Days paid", `${data.days.paid} of ${data.days.inPeriod}`, left, y);
+    detail("Loss of pay days", String(data.days.lop), colB, y);
+    y -= 34;
+  }
+
   rule(y + 8);
   y -= 8;
 
@@ -182,11 +196,18 @@ export async function buildPayslipPdf(data: PayslipData): Promise<Uint8Array> {
 
   sectionTitle("Earnings");
   line("Basic salary", data.basic);
+  const otherEarningsTotal =
+    (data.overtime?.pay ?? 0) + (data.extraEarnings ?? []).reduce((t, e) => t + e.amount, 0);
+  const componentAllowances = Math.round((data.allowances - otherEarningsTotal) * 100) / 100;
   if (data.allowanceItems && data.allowanceItems.length > 0) {
     for (const item of data.allowanceItems) line(item.name, item.amount);
-  } else if (data.allowances > 0) {
-    line("Allowances", data.allowances);
+  } else if (componentAllowances > 0) {
+    line("Allowances", componentAllowances);
   }
+  if (data.overtime && data.overtime.pay > 0) {
+    line(`Overtime (${data.overtime.hours} h)`, data.overtime.pay);
+  }
+  for (const item of data.extraEarnings ?? []) line(item.label, item.amount);
   rule(y + 10);
   y -= 2;
   line("Gross earnings", data.basic + data.allowances, true);
@@ -200,13 +221,19 @@ export async function buildPayslipPdf(data: PayslipData): Promise<Uint8Array> {
         ["ESI (employee)", st.esiEmployee],
         ["Professional tax", st.professionalTax],
         ["Income tax (TDS)", st.tds],
+        ["Labour welfare fund", st.lwfEmployee ?? 0],
       ]
     : [];
-  const statutoryTotal = statutoryLines.reduce((t, [, amount]) => t + amount, 0);
+  const extras = data.extraDeductions ?? [];
+  const statutoryTotal =
+    statutoryLines.reduce((t, [, amount]) => t + amount, 0) + extras.reduce((t, e) => t + e.amount, 0);
   const otherDeductions = Math.round((data.deductions - statutoryTotal) * 100) / 100;
 
   for (const [label, amount] of statutoryLines) {
     if (amount > 0) line(label, amount);
+  }
+  for (const item of extras) {
+    if (item.amount > 0) line(item.label, item.amount);
   }
   if (data.deductionItems && data.deductionItems.length > 0) {
     for (const item of data.deductionItems) line(item.name, item.amount);

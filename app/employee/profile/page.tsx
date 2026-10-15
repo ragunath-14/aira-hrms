@@ -5,16 +5,16 @@ import { KeyRoundIcon } from "lucide-react";
 
 import { ChangePasswordDialog } from "@/components/shared/change-password-dialog";
 import { useEmployee } from "@/components/layout/employee-context";
+import { PhotoEditor } from "@/components/shared/employee-photo";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format/date";
 
 export default function EmployeeProfilePage() {
-  const { employee } = useEmployee();
+  const { employee, reload } = useEmployee();
   const [passwordOpen, setPasswordOpen] = useState(false);
 
   if (!employee) return null;
 
-  const initials = `${employee.firstName[0] ?? ""}${employee.lastName?.[0] ?? ""}`.toUpperCase();
   const fullName = `${employee.firstName}${employee.lastName ? ` ${employee.lastName}` : ""}`;
 
   const details: { label: string; value: string }[] = [
@@ -32,9 +32,13 @@ export default function EmployeeProfilePage() {
   return (
     <div className="space-y-6">
       <section className="flex flex-wrap items-center gap-5 rounded-2xl border bg-card p-6 shadow-sm">
-        <div className="flex size-20 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-indigo-500 text-3xl font-bold text-white shadow-md">
-          {initials}
-        </div>
+        <PhotoEditor
+          employeeId={employee.id}
+          name={fullName}
+          photoVersion={employee.photoVersion}
+          onChanged={reload}
+          className="size-20 rounded-2xl text-3xl"
+        />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-bold text-foreground">{fullName}</h1>
           <p className="mt-1 text-sm text-muted-foreground">

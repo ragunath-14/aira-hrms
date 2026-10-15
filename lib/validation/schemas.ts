@@ -89,7 +89,18 @@ export const locationSchema = z.object({
   city: z.string().trim().nullable().optional(),
   state: z.string().trim().nullable().optional(),
   country: z.string().trim().nullable().optional(),
-});
+  // The site's position and how close a punch must be (metres). Set all three
+  // or none.
+  latitude: z.number().min(-90, "Latitude is between -90 and 90").max(90, "Latitude is between -90 and 90").nullable().optional(),
+  longitude: z.number().min(-180, "Longitude is between -180 and 180").max(180, "Longitude is between -180 and 180").nullable().optional(),
+  geofenceRadiusM: z.number().int().min(20, "The radius is at least 20 m").max(50_000, "The radius is at most 50 km").nullable().optional(),
+}).refine(
+  (d) => {
+    const set = [d.latitude, d.longitude, d.geofenceRadiusM].filter((v) => v !== null && v !== undefined).length;
+    return set === 0 || set === 3;
+  },
+  { message: "Set the latitude, longitude and radius together, or leave all three empty", path: ["latitude"] },
+);
 
 export const leaveRequestCreateSchema = z.object({
   leaveTypeId: z.string().uuid("A valid leave type is required"),
@@ -103,6 +114,7 @@ export const leaveTypeRulesUpdateSchema = z.object({
   maxConsecutiveDays: z.number().int().min(0).nullable().optional(),
   minNoticeDays: z.number().int().min(0).nullable().optional(),
   encashmentAllowed: z.boolean().optional(),
+  isPaid: z.boolean().optional(),
   rulesText: z.string().trim().nullable().optional(),
 });
 
@@ -179,6 +191,8 @@ export const salaryComponentSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
   type: z.enum(["allowance", "deduction"], "Type must be allowance or deduction"),
   amount: z.coerce.number().min(0, "Amount must be 0 or more").max(100_000_000),
+  // Empty or missing = applies to everyone; otherwise only this employee.
+  employeeId: z.union([z.literal(""), z.string().uuid("Choose a valid employee")]).nullable().optional(),
 });
 
 export const performanceReviewSchema = z.object({
@@ -218,6 +232,8 @@ export const systemSettingsUpdateSchema = z
     graceMinutes: z.number().int().min(0).max(180).optional(),
     halfDayAfter: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:mm (24-hour)").optional(),
     minFullDayHours: z.number().min(0).max(12).optional(),
+    requirePunchLocation: z.boolean().optional(),
+    requirePunchPhoto: z.boolean().optional(),
   })
   .strict();
 
@@ -258,6 +274,8 @@ export const holidaySchema = z.object({
   date: z.string().refine(isRealDate, "Enter a real date (YYYY-MM-DD)"),
   type: z.enum(["public", "optional", "company"]).default("public"),
   description: z.string().trim().nullable().optional(),
+  // Empty = the whole company; otherwise only people working at this location.
+  locationId: z.union([z.literal(""), z.string().uuid("Choose a valid location")]).nullable().optional(),
 });
 
 export const announcementSchema = z.object({
@@ -447,6 +465,18 @@ export const statutoryConfigSchema = z
       })
       .strict(),
     tds: z.object({ enabled: z.boolean() }).strict(),
+    lwf: z
+      .object({
+        enabled: z.boolean(),
+        employeeAmount: money,
+        employerAmount: money,
+        months: z
+          .array(z.number().int().min(1, "Months are 1 to 12").max(12, "Months are 1 to 12"))
+          .min(1, "Choose at least one month")
+          .max(12)
+          .refine((months) => new Set(months).size === months.length, "A month is listed twice"),
+      })
+      .strict(),
   })
   .strict();
 
@@ -464,10 +494,40 @@ export const employeeStatutorySchema = z
     pan: optionalId(panField),
     uan: optionalId(z.string().trim().regex(/^\d{12}$/, "UAN must be 12 digits")),
     esiNumber: optionalId(z.string().trim().regex(/^\d{10,17}$/, "ESI number must be 10 to 17 digits")),
+    bankName: optionalId(z.string().trim().min(2).max(80)),
+    accountNumber: optionalId(z.string().trim().regex(/^\d{6,20}$/, "Account number must be 6 to 20 digits")),
+    ifsc: optionalId(
+      z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, "IFSC must look like HDFC0001234"),
+    ),
     pfApplicable: z.boolean().optional(),
     esiApplicable: z.boolean().optional(),
     ptApplicable: z.boolean().optional(),
     taxRegime: z.enum(["new", "old"]).optional(),
     declaredDeductions: z.number().min(0).max(100_000_000).optional(),
+  })
+  .strict();
+
+// Company payroll rules (Settings -> Payroll Rules).
+export const payrollRulesSchema = z
+  .object({
+    linkAttendance: z.boolean(),
+    dayBasis: z.enum(["calendar", "working"]),
+    weeklyOffDays: z
+      .array(z.number().int().min(0).max(6))
+      .max(6, "Choose at most six weekly offs")
+      .refine((days) => new Set(days).size === days.length, "A day is listed twice"),
+    absentIsLop: z.boolean(),
+    halfDayLopDays: z.number().min(0, "Cannot be negative").max(1, "A half day cannot cost more than one day"),
+    lateMarksPerLop: z.number().int().min(0).max(31),
+    overtime: z
+      .object({
+        enabled: z.boolean(),
+        multiplier: z.number().min(1, "The multiplier is at least 1").max(5),
+        standardHours: z.number().min(1).max(24),
+        bufferMinutes: z.number().int().min(0).max(240),
+        roundMinutes: z.union([z.literal(1), z.literal(15), z.literal(30), z.literal(45), z.literal(60)]),
+        offDayAllHours: z.boolean(),
+      })
+      .strict(),
   })
   .strict();

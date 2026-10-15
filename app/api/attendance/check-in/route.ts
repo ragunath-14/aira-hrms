@@ -1,11 +1,12 @@
 import { eq, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { attendance } from "@/db/schema/attendance";
+import { attendance, attendancePhotos } from "@/db/schema/attendance";
 import { employees } from "@/db/schema/employees";
 import { requireRole } from "@/lib/auth/authorization";
 import { logAudit } from "@/lib/domain/audit";
 import { dateInZone, resolveSettings, statusForCheckIn } from "@/lib/config/settings";
+import { checkPunchProof } from "@/lib/domain/punch-proof";
 export async function POST(request: Request) {
   try {
     // requireRole already resolves the tenant/user context internally —
@@ -69,9 +70,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Optional body: { workMode: "office" | "remote" }
+    // Optional body: { workMode, latitude, longitude, accuracy, photo }
     const body = await request.json().catch(() => ({}));
     const workMode = body?.workMode === "remote" ? "remote" : "office";
+
+    const checked = await checkPunchProof({ settings, locationId: employee.locationId, body });
+
+    if ("response" in checked) return checked.response;
+
+    const { proof } = checked;
 
     const now = new Date();
 
@@ -84,8 +91,21 @@ export async function POST(request: Request) {
         checkIn: now,
         status: statusForCheckIn(now, settings),
         workMode,
+        checkInLat: proof.latitude === null ? null : proof.latitude.toFixed(6),
+        checkInLng: proof.longitude === null ? null : proof.longitude.toFixed(6),
+        checkInDistanceM: proof.distanceM,
       })
       .returning();
+
+    if (proof.photo) {
+      await db.insert(attendancePhotos).values({
+        attendanceId: createdAttendance.id,
+        kind: "in",
+        tenantId: tenant.id,
+        mimeType: proof.photo.mimeType,
+        data: proof.photo.data,
+      });
+    }
 
     await logAudit({
       tenantId: tenant.id,

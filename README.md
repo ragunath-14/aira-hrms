@@ -413,8 +413,8 @@ otherwise only has a placeholder connection string.
 - **Statutory payroll covers the common Indian cases, not every one.**
   PF, ESI, professional tax and TDS on salary are built in (see
   [Statutory payroll](#statutory-payroll-pf-esi-professional-tax-tds)), but
-  surcharge on very high incomes, perquisites, arrears, bonus-based PF/ESI
-  rules, labour-welfare fund and gratuity are not. Rates and slabs are
+  surcharge on very high incomes, perquisites, bonus-based PF/ESI rules and
+  gratuity are not. Rates and slabs are
   company settings that you must keep in line with current law. Have your
   accountant review the first few payroll runs before relying on them.
 - **System settings are persisted server-side, not in `localStorage`.**
@@ -540,6 +540,7 @@ from the next payroll run; payroll already processed is never rewritten.
 | Provident fund | Employee 12% and employer 12% of the employee's basic salary, on at most the wage ceiling (15,000) unless "contribute on the ceiling only" is turned off. The employer share is split into pension (EPS, 8.33% up to the ceiling) and EPF for the return. |
 | ESI | 0.75% employee and 3.25% employer of gross pay, only in months when gross is at or below the limit (21,000). Rounded up to the next rupee. |
 | Professional tax | A fixed monthly amount from the company's slab table, by gross pay. Starting slabs are provided for Tamil Nadu, Karnataka, Maharashtra, Telangana, Andhra Pradesh, West Bengal and Gujarat; edit them to match your state's current rules. |
+| Labour welfare fund | A fixed employee and employer amount in the months you choose (many states collect it once or twice a year). Rates differ by state, so there are no presets: enter your state's amounts. |
 | TDS | Each month: project the year's pay (pay so far this financial year plus this month's pay for every month left), compute the year's tax, and spread what is still owed over the months left. New and old regimes, standard deduction, section 87A rebate (with marginal relief in the new regime) and 4% cess, using the FY 2025-26 rules. Surcharge is not applied. |
 
 Each employee's PAN, UAN, ESI number, which schemes apply to them, their tax
@@ -582,6 +583,17 @@ and SVG are refused.
 - **Older uploads** that stored a whole file as a `data:` link are still listed
   and downloadable. Links must be `http(s)` addresses.
 
+## Profile photos
+
+Every employee can have a profile photo, shown in My Workspace (dashboard header,
+profile page and top bar) and on the HR employee page. Use the small camera button
+on the picture to upload or remove it. The browser crops the picture to a square
+and shrinks it to 256 px before uploading, so a stored photo is a few KB. The server
+only accepts JPG, PNG or WebP (judged by the file's contents, 1 MB at most).
+Anyone in the company can see a colleague's photo; only that employee, or owner /
+admin / HR, can change it. Photos live in the `employee_photos` table (migration
+`0028_employee_photos`).
+
 ## Plans and usage
 
 Each company has a plan (Free, Starter, Growth, Enterprise; catalogue in
@@ -598,3 +610,66 @@ refused with a clear message. Owners and admins see their usage under **Settings
 -> Plan & Usage** and get a warning banner at 90% and when blocked. There is no
 payment processing: plans are set by hand. A payment provider can call the same
 "set plan" path later. Plan changes are recorded in the platform audit log.
+
+## Pay by attendance, overtime and payroll tools
+
+**Settings -> Payroll Rules** (owner and admin) turns attendance into pay. Everything is
+off until switched on, so payroll keeps paying the full monthly salary.
+
+- **Loss of pay.** Pay is reduced for days not worked: working days with no attendance
+  and no approved leave, days marked Absent, and approved leave of a type marked
+  **Unpaid** (Leave -> Leave types -> Pay). A day of salary is the monthly pay over the
+  calendar days of the month, or over its working days, as you choose. Weekly offs are
+  configurable (Sat/Sun by default). Someone who joined mid-month is paid from the day
+  they joined. Half days can cost half a day, and every N late marks can cost a day.
+  Salary and allowances are both prorated, and PF/ESI/PT/TDS are worked out on what was
+  actually earned.
+- **Overtime.** Hours between check-in and check-out beyond the standard day, after a
+  grace window and rounded down to 1, 15, 30, 45 or 60 minutes, are paid at a multiple of
+  the hourly rate (monthly basic over the month's working days over standard hours).
+  Optionally every hour on a weekly off or holiday counts.
+- **Per-employee salary components.** A salary component can apply to everyone or to one
+  employee (Salary Structure -> Add Component -> Applies to).
+- **Review & run.** On the Payroll page, **Review & run** shows each person's paid days,
+  loss of pay, overtime, adjustments, loan instalment, deductions and net pay before
+  anything is saved, then runs payroll.
+- **Adjustments.** Bonus, arrears or a one-off deduction for one or many employees for a
+  month. Earnings count as gross pay (including for tax); deductions come off net pay.
+- **Loans & Advances.** Recorded under Payroll -> Loans & Advances; payroll takes equal
+  monthly instalments (never more than is left of the pay) until the balance is zero.
+  Employees see their own under Payslips. Deleting a payslip puts its instalment back.
+- **Bank file.** **Bank file** on the Payroll page downloads a CSV of the month's net pay
+  with each person's account and IFSC (entered under Employees -> Statutory).
+- **Locked once paid.** After a month is run for someone, adjustments for that month
+  cannot be added or removed; and, when the company pays by attendance or overtime,
+  that person's attendance and leave for the month cannot be edited. Delete the payroll
+  record first if something genuinely needs correcting.
+- **Payslip** shows days paid, loss of pay, overtime, bonus, loan recovery and every
+  statutory line.
+
+## Reports and filing files
+
+- **Muster Report** (Reports): a month grid of every employee's day-by-day attendance
+  (present, late, half day, absent, paid/unpaid leave, weekly off, holiday) with totals
+  and CSV export.
+- **Statutory Report** gains filing files next to the PF return: an **ESIC** contribution
+  CSV in the portal's column layout (needs each person's ESI number), and CSVs for
+  **professional tax**, **TDS** and **LWF**.
+
+## Attendance proof and branches
+
+- **Location and selfie at check-in** (Settings -> System, owner and admin). With
+  *Require location* on, employees share their browser location when they check in or
+  out; with *Require a selfie*, they take a photo. A location (Locations page) can have a
+  **punch fence** (latitude, longitude, radius); employees of that location can only
+  punch within it. Distance and the selfies are kept and shown to HR on the Attendance
+  page. Browsers only share location and camera on https (or localhost).
+- **Holidays by location.** A holiday can apply to the whole company or to one location;
+  employees see the company's holidays plus their own location's, and payroll and the
+  muster report use the same.
+- **Custom fields** (Settings -> Custom Fields): up to 20 extra text, number or date
+  fields per employee, filled in by HR on the employee's Overview tab.
+
+Not built: native mobile apps, fingerprint/face terminals, live location tracking,
+WhatsApp alerts, interface languages other than English, and signing in to several
+companies from one login.

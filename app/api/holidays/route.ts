@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { holidays } from "@/db/schema";
+import { employees, holidays, locations } from "@/db/schema";
 import { zodMessage } from "@/lib/format/error-text";
 import { requireRole } from "@/lib/auth/authorization";
 import { logAudit } from "@/lib/domain/audit";
@@ -20,11 +20,25 @@ export async function GET(request: Request) {
 
     const year = new URL(request.url).searchParams.get("year");
 
-    const rows = await db
+    const all = await db
       .select()
       .from(holidays)
       .where(eq(holidays.tenantId, auth.tenant.id))
       .orderBy(asc(holidays.date));
+
+    // Employees see the company's holidays and those for their own location;
+    // HR sees every one so it can manage them.
+    let rows = all;
+
+    if (!["owner", "admin", "hr", "manager"].includes(auth.role)) {
+      const [me] = await db
+        .select({ locationId: employees.locationId })
+        .from(employees)
+        .where(and(eq(employees.tenantId, auth.tenant.id), eq(employees.userId, auth.user.id)))
+        .limit(1);
+
+      rows = all.filter((h) => h.locationId === null || h.locationId === (me?.locationId ?? null));
+    }
 
     return NextResponse.json(
       year && /^\d{4}$/.test(year)
@@ -51,6 +65,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
 
+    const locationId = parsed.data.locationId || null;
+
+    if (locationId) {
+      const [site] = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.id, locationId), eq(locations.tenantId, auth.tenant.id)))
+        .limit(1);
+
+      if (!site) return NextResponse.json({ error: "Location not found" }, { status: 404 });
+    }
+
     const [existing] = await db
       .select({ id: holidays.id })
       .from(holidays)
@@ -59,6 +85,7 @@ export async function POST(request: Request) {
           eq(holidays.tenantId, auth.tenant.id),
           eq(holidays.date, parsed.data.date),
           eq(holidays.name, parsed.data.name),
+          locationId ? eq(holidays.locationId, locationId) : isNull(holidays.locationId),
         ),
       )
       .limit(1);
@@ -78,6 +105,7 @@ export async function POST(request: Request) {
         date: parsed.data.date,
         type: parsed.data.type,
         description: parsed.data.description || null,
+        locationId,
       })
       .returning();
 

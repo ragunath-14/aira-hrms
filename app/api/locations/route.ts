@@ -73,6 +73,9 @@ export async function POST(request: Request) {
         city: parsed.data.city || null,
         state: parsed.data.state || null,
         country: parsed.data.country || null,
+        latitude: parsed.data.latitude == null ? null : parsed.data.latitude.toFixed(6),
+        longitude: parsed.data.longitude == null ? null : parsed.data.longitude.toFixed(6),
+        geofenceRadiusM: parsed.data.geofenceRadiusM ?? null,
       })
       .returning();
 

@@ -15,3 +15,4 @@ export * from "./employee-documents";
 export * from "./rbac";export * from "./engagement";
 export * from "./workplace";
 export * from "./meetings";
+export * from "./employee-photos";

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePunch } from "@/components/features/use-punch";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -143,29 +144,10 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
 
   const me = data?.members.find((m) => m.isYou);
 
-  async function punch(kind: "check-in" | "check-out") {
-    setBusy(true);
-
-    try {
-      const res = await fetch(`/api/attendance/${kind}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(kind === "check-in" ? { workMode: pendingMode } : {}),
-      });
-      const body = await res.json();
-
-      if (!res.ok) {
-        toast.error(typeof body.error === "string" ? body.error : "Request failed");
-      } else {
-        toast.success(kind === "check-in" ? "Checked in" : "Checked out");
-        await load(department);
-      }
-    } catch {
-      toast.error("Request failed. Check your connection and try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { punch, busy: punching, dialog: punchDialog } = usePunch(
+    () => load(department),
+    (kind) => (kind === "check-in" ? { workMode: pendingMode } : {}),
+  );
 
   // "Meet Now" (no one) or "Call" (one colleague). The tab is opened straight
   // away from the click so the browser does not block it as a pop-up.
@@ -378,22 +360,24 @@ export function WorkplaceView({ portal = "employee" }: { portal?: "employee" | "
 
         <div className="ml-auto flex items-center gap-3">
           {me?.state !== "in" && !me?.checkOut && me?.state !== "leave" && (
-            <Button disabled={busy} onClick={() => punch("check-in")}>
-              <LogInIcon /> {busy ? "Processing…" : "Check In"}
+            <Button disabled={busy || punching} onClick={() => punch("check-in")}>
+              <LogInIcon /> {punching ? "Processing…" : "Check In"}
             </Button>
           )}
           {me?.state === "in" && (
             <Button
               variant="outline"
-              disabled={busy}
+              disabled={busy || punching}
               onClick={() => punch("check-out")}
               className="border-destructive/40 text-destructive hover:bg-destructive/10"
             >
-              <LogOutIcon /> {busy ? "Processing…" : "Check Out"}
+              <LogOutIcon /> {punching ? "Processing…" : "Check Out"}
             </Button>
           )}
         </div>
       </section>
+
+      {punchDialog}
 
       {/* Department + actions */}
       <section className="flex flex-wrap items-center justify-between gap-4">

@@ -11,8 +11,11 @@ import {
   PartyPopperIcon,
   ClipboardListIcon,
   PencilIcon,
+  MapPinIcon,
+  CameraIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { usePunch } from "@/components/features/use-punch";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -82,6 +85,11 @@ type AttendanceRecord = {
   checkOut: string | null;
   status: string;
   notes: string | null;
+  checkInDistanceM: number | null;
+  checkOutDistanceM: number | null;
+  hasCheckInLocation: boolean;
+  hasCheckInPhoto: boolean;
+  hasCheckOutPhoto: boolean;
 };
 
 type TodayAttendance = {
@@ -262,73 +270,10 @@ export default function AttendancePage() {
     }
   }
 
-  async function handleCheckIn() {
-    try {
-      setActionLoading(true);
-      setError("");
+  const { punch, busy: punching, dialog: punchDialog } = usePunch(refreshRecords);
 
-      const response = await fetch(
-        "/api/attendance/check-in",
-        {
-          method: "POST",
-        },
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error || "Failed to check in",
-        );
-      }
-
-      toast.success("Checked in successfully");
-      await refreshRecords();
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Failed to check in";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleCheckOut() {
-    try {
-      setActionLoading(true);
-      setError("");
-
-      const response = await fetch(
-        "/api/attendance/check-out",
-        {
-          method: "POST",
-        },
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error || "Failed to check out",
-        );
-      }
-
-      toast.success("Checked out successfully");
-      await refreshRecords();
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Failed to check out";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setActionLoading(false);
-    }
-  }
+  const handleCheckIn = () => punch("check-in");
+  const handleCheckOut = () => punch("check-out");
 
   function clearFilters() {
     setEmployeeFilter(ALL);
@@ -557,9 +502,9 @@ export default function AttendancePage() {
           <div className="flex gap-3">
             <Button
               onClick={handleCheckIn}
-              disabled={actionLoading || Boolean(today?.checkIn)}
+              disabled={actionLoading || punching || Boolean(today?.checkIn)}
             >
-              {actionLoading ? "Processing…" : "Check In"}
+              {actionLoading || punching ? "Processing…" : "Check In"}
             </Button>
 
             <Button
@@ -567,6 +512,7 @@ export default function AttendancePage() {
               onClick={handleCheckOut}
               disabled={
                 actionLoading ||
+                punching ||
                 !today?.checkIn ||
                 Boolean(today?.checkOut)
               }
@@ -729,6 +675,7 @@ export default function AttendancePage() {
                   <TableHead>Check In</TableHead>
                   <TableHead>Check Out</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Proof</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead>Action</TableHead>
                 </TableRow>
@@ -753,6 +700,25 @@ export default function AttendancePage() {
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={record.status} />
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {record.hasCheckInLocation && (
+                        <span className="mr-2 inline-flex items-center gap-1">
+                          <MapPinIcon className="size-3.5" />
+                          {record.checkInDistanceM !== null ? `${record.checkInDistanceM} m from site` : "location saved"}
+                        </span>
+                      )}
+                      {record.hasCheckInPhoto && (
+                        <a className="mr-2 inline-flex items-center gap-1 text-primary hover:underline" href={`/api/attendance/${record.id}/photo?kind=in`} target="_blank" rel="noreferrer">
+                          <CameraIcon className="size-3.5" /> In
+                        </a>
+                      )}
+                      {record.hasCheckOutPhoto && (
+                        <a className="inline-flex items-center gap-1 text-primary hover:underline" href={`/api/attendance/${record.id}/photo?kind=out`} target="_blank" rel="noreferrer">
+                          <CameraIcon className="size-3.5" /> Out
+                        </a>
+                      )}
+                      {!record.hasCheckInLocation && !record.hasCheckInPhoto && !record.hasCheckOutPhoto && "—"}
                     </TableCell>
                     <TableCell className="max-w-55 truncate text-muted-foreground">
                       {record.notes || "-"}
@@ -894,6 +860,8 @@ export default function AttendancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {punchDialog}
     </div>
   );
 }
