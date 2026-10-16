@@ -169,6 +169,9 @@ Copy `.env.example` to `.env.local` and fill in:
 | `DATABASE_URL` | Postgres connection string from your Neon project (Dashboard → Connection Details). Use the **pooled** connection string (host contains `-pooler`). |
 | `BETTER_AUTH_SECRET` | Secret Better Auth uses to sign sessions/cookies. Generate one with `openssl rand -base64 32`. |
 | `BETTER_AUTH_URL` | Base URL Better Auth uses to build callback/redirect URLs. `http://localhost:3000` locally; your deployed URL in production. |
+| `CRON_SECRET` | Optional, 16+ characters. Lets a scheduler call `POST /api/internal/webhooks/run` to retry failed webhooks. Without it that address does not exist. |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | Optional. A ClamAV daemon (`clamd`) to scan applicants' resumes (port defaults to 3310). When set, a resume that cannot be scanned is refused. |
+| `WEBHOOK_ALLOW_PRIVATE_NETWORKS` | Local testing only: lets webhooks use `http://` and private addresses. Never set it on a live server. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | Optional. Outgoing email (see [Email, password reset and two-factor sign-in](#email-password-reset-and-two-factor-sign-in)). Email stays off until `SMTP_HOST` and `SMTP_FROM` are set. |
 
 ## Local installation
@@ -655,6 +658,12 @@ off until switched on, so payroll keeps paying the full monthly salary.
 - **Statutory Report** gains filing files next to the PF return: an **ESIC** contribution
   CSV in the portal's column layout (needs each person's ESI number), and CSVs for
   **professional tax**, **TDS** and **LWF**.
+- **Reports hub** (Reports, owners/admins/HR): tabs for **Headcount** (by department,
+  location, designation or status, plus joiners over 12 months and the full list),
+  **Attendance** (per-employee month summary), **Leave** (by type and by employee for a
+  year) and **Payroll cost** (by month and by department, with employer contributions).
+  Each has department/location filters and a CSV button per table. Managers see the
+  Overview tab only.
 
 ## Attendance proof and branches
 
@@ -671,5 +680,163 @@ off until switched on, so payroll keeps paying the full monthly salary.
   fields per employee, filled in by HR on the employee's Overview tab.
 
 Not built: native mobile apps, fingerprint/face terminals, live location tracking,
-WhatsApp alerts, interface languages other than English, and signing in to several
-companies from one login.
+WhatsApp alerts, and interface languages other than English.
+
+## One login for several companies
+
+A person can belong to more than one company with the same email and password, with a
+different role in each (HR in one, employee in another). Each company keeps its own
+employee record, leave, payslips and data for them; nothing is shared between companies.
+
+- **Switching.** When someone belongs to more than one company, the **Workspace** box in the
+  HR sidebar (and **Switch company** in the employee account menu) lets them pick which one
+  they are working in; they land on that company's home for their role there. The choice is
+  remembered in a cookie, but it is only a preference: every request checks it against the
+  person's real memberships, so a forged value gets nothing. Signing in opens the company they
+  last used, or their oldest approved one.
+- **Adding someone who already has a login.** A company owner, admin or HR adds them by email
+  under **Settings -> Users** exactly like anyone else. They get access to this company and
+  keep their own password; a password typed for them is ignored (and the page says so).
+  The platform owner can likewise create a company whose owner is an existing login: leave
+  the password empty on **Create company** and that same login becomes the owner.
+- **Protection.** Nobody in one company can set the password or reset the two-factor sign-in
+  of someone who also belongs to another company, since that would hand over their access to
+  the other company. Those people change their own from their account menu (the Users page
+  shows an "Also in another company" tag and hides those buttons). Removing someone from a
+  company only removes that company; their login and other companies are untouched.
+- **Limits.** Adding is immediate: there is no invitation for the person to accept, and the
+  plan limits of each company count them separately.
+
+## Company roles (admin access)
+
+Under **Settings > Roles > Your company's roles**, owners and admins can create roles such as
+"Payroll clerk" or "Recruiter". A role starts from Admin, HR Partner or Manager and then
+ticks what is allowed, area by area (employees, attendance, leave, payroll, recruitment,
+performance, reports, documents, engagement, settings) and action by action (view, add,
+change, delete). Assign it under Settings > Users, or when adding a person.
+
+- **A role can only take access away.** The built-in role still decides what a person can
+  reach at all; a company role narrows that. A manager-based role with every box ticked still
+  cannot open payroll.
+- **Enforcement is on the server.** A blocked request returns 403 with the reason, and the
+  menu hides pages the role cannot view. On pages that employees also use (their own leave,
+  tickets), a restricted person gets the own-data view instead of the company-wide one.
+  Endpoints nobody mapped to an area count as Settings.
+- Editing a role takes effect at once. A role in use cannot be deleted. Nobody can change
+  their own role. Roles belong to one company.
+
+## Connecting the company's website (API only)
+
+The company's own website connects to AIRA through the API only: openings created in
+Recruitment are returned to the website's **server**, and applications it sends arrive on the
+Recruitment board. There is no embeddable widget, hosted page or public endpoint; everything
+needs an API key.
+
+**Set-up for the company**
+
+1. Open AIRA at its live `https://` address, go to **Recruitment > Website connection (API)** and
+   create a key (owners and admins only). Choose its permissions, an expiry and, if you can,
+   the server address it may be used from. Copy it now: it is shown once.
+2. Give the key and the API address to the website developer, to keep on the server.
+3. Create openings in Recruitment and tick **Show on the careers page** (or press **Publish**).
+   Only published, open jobs are returned; closing an opening removes it.
+4. Applications sent through the API appear in **Applied**, tagged "Website", with the resume,
+   cover note and details. Click the name to download the resume, rate 1 to 5 and add notes.
+   Owners, admins and HR (except company roles without Recruitment access) are notified.
+
+Applicants' stage changes can be pushed back to the website with a webhook (below).
+
+### API keys
+
+- **Keep the key on the server.** It is shown once when created and AIRA stores only a SHA-256
+  hash, so it cannot be recovered; lose it and revoke it. Never put a key in web page code.
+- **Least privilege.** Each key gets only the permissions chosen when it is created:
+  `jobs:read` (published openings, no personal data), `applications:write` (send an
+  application) and `applications:read` (applicants' names, emails, phones and stages). New keys
+  default to the first two. A key can do nothing else in AIRA.
+- **Expiry and revoking.** A key can expire after 30, 90, 180 or 365 days (or never), and
+  revoking or expiry takes effect on the very next request. Up to 10 active keys per company;
+  creating and revoking are written to the audit log.
+- **Limit a key to your server.** When creating a key you can list the IP addresses it may be
+  used from. A key limited like this is useless to anyone who copies it from elsewhere. (The
+  address is the one the host reports for the caller, as for the rate limits below.)
+- **Limits.** 300 requests a minute per key, 60 applications per 10 minutes per key, and a
+  caller who sends about 30 wrong keys in ten minutes is refused for the rest of that window
+  (good keys are never counted against it). There are no CORS headers on `/api/v1`, so a
+  browser on another website cannot use a key it finds.
+- **https only.** On a live server a key sent over plain `http://` is refused.
+
+Send the key as `Authorization: Bearer <key>` (or `X-API-Key`); never in the address.
+
+| Call | Needs | Does |
+|---|---|---|
+| `GET /api/v1/jobs` | `jobs:read` | Published, open jobs |
+| `GET /api/v1/jobs/{id}` | `jobs:read` | One of them |
+| `POST /api/v1/applications` | `applications:write` | Send an application: a form with a `resume` file, or JSON `{ jobId, name, email, phone?, coverNote?, resume: { fileName, contentBase64 } }` |
+| `GET /api/v1/applications?since=&jobId=&stage=&limit=` | `applications:read` | Applicants that came in from the website or API, oldest first (`since` lets you resume where you left off) |
+
+```bash
+curl https://YOUR-AIRA-ADDRESS/api/v1/jobs -H "Authorization: Bearer YOUR_KEY"
+
+curl -X POST https://YOUR-AIRA-ADDRESS/api/v1/applications \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -F jobId=JOB_ID -F name="Asha Rao" -F email=asha@example.com -F resume=@cv.pdf
+```
+
+Errors: 401 (no, wrong, expired or revoked key), 403 (the key lacks that permission), 404
+(job not published or not yours), 409 (that person already applied), 413/415 (resume too big
+or not a PDF/DOC/DOCX), 429 (slow down).
+
+## Webhooks, resume screening and shared limits
+
+**Webhooks (AIRA tells your system).** Under Recruitment > Website connection > Webhook an owner or
+admin sets an `https://` address. AIRA calls it with a JSON `POST` when someone applies
+(`application.created`) and when the team moves an applicant who came in through the website or
+API to another stage (`application.stage_changed`; people the team typed in are never sent).
+
+```json
+{ "id": "<delivery id>", "type": "application.created", "createdAt": "2026-10-16T04:32:21Z",
+  "data": { "applicationId": "...", "jobId": "...", "jobTitle": "...", "name": "...",
+            "email": "...", "phone": null, "stage": "applied", "source": "api" } }
+```
+
+- **Verify every call.** Headers `X-AIRA-Event`, `X-AIRA-Delivery` and
+  `X-AIRA-Signature: t=<unix time>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `"<t>.<raw body>"`
+  with your signing secret. Recompute it, compare in constant time, and reject calls whose `t` is
+  more than a few minutes old. The secret (`whsec_...`) is shown once, can be rotated, and the
+  delivery id lets you ignore a message you already handled.
+- **Answer with any 2xx.** Anything else, or no answer within 5 seconds, is retried after 1 minute,
+  5 minutes, 30 minutes, 2 hours and 6 hours, then marked failed. Failed messages can be retried
+  from the screen. After 20 failures in a row the webhook is paused. "Send test" sends a `ping`.
+- **Retries need a trigger.** A failed message is retried whenever the company has a new event, or
+  when `POST /api/internal/webhooks/run` is called with `Authorization: Bearer $CRON_SECRET`.
+  Set `CRON_SECRET` (16+ characters) and add a Render Cron Job that calls that address every few
+  minutes (`curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://YOUR-AIRA-ADDRESS/api/internal/webhooks/run`).
+  Without `CRON_SECRET` that address does not exist.
+- **AIRA cannot be aimed at your network.** Webhook addresses must be public `https://` addresses
+  with no credentials; loopback, private, link-local (cloud metadata), shared and reserved
+  addresses are refused when saving and again on every call, the connection is pinned to the
+  address that was checked, redirects are not followed and the answer is discarded.
+  `WEBHOOK_ALLOW_PRIVATE_NETWORKS=true` lifts this for local testing only; never set it on a live
+  server.
+
+**Resume screening.** Besides the type, size and "is this really a PDF/DOC/DOCX" checks, every
+resume is screened: PDFs with scripts, launch actions or embedded files (including names hidden
+with `#xx` escapes), `.docx` files with macros, ActiveX, embedded objects or programs (and zip
+bombs), `.doc` files with macros, and the EICAR test virus are refused with a clear message. If
+the host runs ClamAV, set `CLAMAV_HOST` (and `CLAMAV_PORT`, default 3310) and every resume is
+also scanned by it; a resume that cannot be scanned is refused rather than let through. This is
+screening for what a resume should never contain, not a replacement for antivirus on the
+machines that open the files; resumes are only ever offered as downloads.
+
+**Limits shared by all servers.** The API limits are counted in the database (table
+`rate_limits`), so they hold across several server instances and restarts. If the database cannot
+be reached they fall back to a per-instance counter. On top of the per-visitor limits, one company's
+inbox accepts at most 200 applications an hour from all addresses together, so rotating addresses
+cannot flood it. The visitor's address comes from the host's `cf-connecting-ip` header (Render
+sets it); behind a different proxy, make it forward the real client address.
+
+**Before connecting a website.** Open AIRA at its live `https://` address to copy the API address
+and create keys: an address like `http://localhost:3000` only exists on your own computer, and the
+panel warns you when you are on one.
+

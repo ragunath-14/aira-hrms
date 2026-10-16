@@ -31,7 +31,10 @@ export async function PATCH(request: Request, { params }: Ctx) {
 
     const [updated] = await db
       .update(jobOpenings)
-      .set({ status: parsed.data.status })
+      .set({
+        ...(parsed.data.status ? { status: parsed.data.status } : {}),
+        ...(parsed.data.published !== undefined ? { published: parsed.data.published } : {}),
+      })
       .where(and(eq(jobOpenings.id, id), eq(jobOpenings.tenantId, actor.tenant.id)))
       .returning();
 

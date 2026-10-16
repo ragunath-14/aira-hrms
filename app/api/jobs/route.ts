@@ -73,6 +73,7 @@ export async function POST(request: Request) {
         employmentType: parsed.data.employmentType,
         openings: parsed.data.openings,
         description: parsed.data.description || null,
+        published: parsed.data.published,
       })
       .returning();
 

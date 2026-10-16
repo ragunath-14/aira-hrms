@@ -212,6 +212,8 @@ export const membershipCreateSchema = z
     role: z.enum(["owner", "admin", "hr", "manager", "employee", "member"]),
     // Optional initial login password (stored hashed, never shown again).
     password: z.string().min(12).max(128).optional(),
+    // One of the company's own roles; the person then acts as its base role.
+    customRoleId: z.string().uuid().nullable().optional(),
   })
   .refine((data) => Boolean(data.email) || Boolean(data.userId), {
     message: "email or userId is required",
@@ -317,11 +319,17 @@ export const jobCreateSchema = z.object({
   employmentType: z.enum(["full_time", "part_time", "contract", "intern"]).default("full_time"),
   openings: z.coerce.number().int().min(1).max(500).default(1),
   description: z.string().trim().max(3000).nullable().optional(),
+  published: z.boolean().default(false),
 });
 
-export const jobUpdateSchema = z.object({
-  status: z.enum(["open", "closed"]),
-});
+export const jobUpdateSchema = z
+  .object({
+    status: z.enum(["open", "closed"]).optional(),
+    published: z.boolean().optional(),
+  })
+  .refine((v) => v.status !== undefined || v.published !== undefined, {
+    message: "Nothing to update",
+  });
 
 export const CANDIDATE_STAGES = [
   "applied",
@@ -348,7 +356,9 @@ export const candidateCreateSchema = z.object({
 export const candidateUpdateSchema = z.object({
   stage: z.enum(CANDIDATE_STAGES).optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  score: z.number().int().min(1).max(5).nullable().optional(),
 });
+
 
 export const onboardingStartSchema = z.object({
   employeeId: z.string().uuid(),
@@ -529,5 +539,15 @@ export const payrollRulesSchema = z
         offDayAllHours: z.boolean(),
       })
       .strict(),
+  })
+  .strict();
+
+// A company's own role (Settings -> Roles & Permissions): a name, one of the
+// built-in roles to start from, and what it may do in each area.
+export const customRoleSchema = z
+  .object({
+    name: z.string().trim().min(2, "Give the role a name of at least 2 characters").max(40, "The name is at most 40 characters"),
+    baseRole: z.enum(["admin", "hr", "manager"], "Choose Admin, HR Partner or Manager"),
+    permissions: z.record(z.string(), z.array(z.string())),
   })
   .strict();

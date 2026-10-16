@@ -1,9 +1,10 @@
 import { createLocalAccountIssuer } from "@better-auth/core/db";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { twoFactor, user as authUsers } from "@/db/schema/auth";
+import { memberships } from "@/db/schema/memberships";
 import { auth } from "@/lib/auth/server";
 import type { Role } from "@/lib/auth/permissions";
 
@@ -90,3 +91,20 @@ export async function resetTwoFactor(email: string) {
 
   return true;
 }
+
+// A login can belong to several companies. Nobody in one company may change
+// the password or two-factor sign-in of someone who also belongs to another:
+// that would let them take over the person's access to the other company.
+// Those people change their own (or the platform owner helps).
+export async function belongsToOtherCompany(userId: string, tenantId: string) {
+  const [other] = await db
+    .select({ id: memberships.id })
+    .from(memberships)
+    .where(and(eq(memberships.userId, userId), ne(memberships.tenantId, tenantId)))
+    .limit(1);
+
+  return Boolean(other);
+}
+
+export const SHARED_LOGIN_MESSAGE =
+  "This person also belongs to another company, so only they can change their sign-in. They can do it from their own account menu.";

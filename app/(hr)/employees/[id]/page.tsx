@@ -237,7 +237,11 @@ export default function EmployeeProfilePage() {
 
       if (!res.ok) throw new Error(errorText(data.error, "Failed to create login"));
 
-      toast.success(`Login created. They sign in with ${employee.email}.`);
+      toast.success(
+        data.loginExisted
+          ? `${employee.email} already had a login, so they now have access here and keep their own password.`
+          : `Login created. They sign in with ${employee.email}.`,
+      );
       setLoginOpen(false);
       setLoginPassword("");
       await load();

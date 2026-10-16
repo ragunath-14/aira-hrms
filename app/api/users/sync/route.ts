@@ -2,7 +2,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema/users";
-import { memberships } from "@/db/schema/memberships";
+import { getActiveMembership, readActiveTenantId } from "@/lib/auth/active-tenant";
 import { auth } from "@/lib/auth/server";
 import { logAudit } from "@/lib/domain/audit";
 
@@ -37,11 +37,10 @@ export async function POST(request: Request) {
     }
 
     // 2. Check whether this user already has a tenant membership
-    const [existingMembership] = await db
-      .select()
-      .from(memberships)
-      .where(eq(memberships.userId, user.id))
-      .limit(1);
+    const existingMembership = await getActiveMembership(
+      user.id,
+      readActiveTenantId(request.headers.get("cookie")),
+    );
 
     if (existingMembership) {
       await logAudit({

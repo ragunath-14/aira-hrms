@@ -49,11 +49,18 @@ type Member = {
   name: string;
   email: string;
   role: string;
+  // One of the company's own roles; then `role` is the built-in role it starts from.
+  customRoleId?: string | null;
+  customRoleName?: string | null;
   createdAt: string;
   twoFactor?: boolean;
+  // Also a member of another company: their sign-in is theirs to change.
+  sharedLogin?: boolean;
 };
 
 const PAGE_SIZE = 10;
+
+type CompanyRole = { id: string; name: string; baseRole: string };
 
 // Mirrors lib/credentials.ts: you can set a password only for roles below
 // yours, and never for the owner. The server enforces it too.
@@ -73,6 +80,7 @@ export default function UsersSettingsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("employee");
+  const [companyRoles, setCompanyRoles] = useState<CompanyRole[]>([]);
   const [newPassword, setNewPassword] = useState("");
   const [savingMember, setSavingMember] = useState(false);
 
@@ -97,6 +105,14 @@ export default function UsersSettingsPage() {
       }
       const data = await res.json();
       setMembers(Array.isArray(data) ? data : []);
+
+      // The company's own roles, to offer next to the built-in ones.
+      const rolesRes = await fetch("/api/custom-roles");
+
+      if (rolesRes.ok) {
+        const rolesData = await rolesRes.json();
+        setCompanyRoles(Array.isArray(rolesData.roles) ? rolesData.roles : []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -189,7 +205,10 @@ export default function UsersSettingsPage() {
         body: JSON.stringify({
           email: newEmail.trim(),
           name: newName.trim() || undefined,
-          role: newRole,
+          role: newRole.startsWith("custom:")
+            ? (companyRoles.find((r) => r.id === newRole.slice("custom:".length))?.baseRole ?? "hr")
+            : newRole,
+          customRoleId: newRole.startsWith("custom:") ? newRole.slice("custom:".length) : undefined,
           password: newPassword || undefined,
         }),
       });
@@ -199,7 +218,11 @@ export default function UsersSettingsPage() {
         throw new Error(errorText(data.error, "Failed to add member"));
       }
 
-      setSuccess(`Successfully added ${newEmail} to the team!`);
+      setSuccess(
+        data.loginExisted
+          ? `Added ${newEmail}. They already had a login, so they sign in with their own password (the one you entered was not used).`
+          : `Successfully added ${newEmail} to the team!`,
+      );
       toast.success(`Added ${newEmail} to the team`);
       setNewEmail("");
       setNewName("");
@@ -219,7 +242,13 @@ export default function UsersSettingsPage() {
     }
   }
 
-  async function handleRoleChange(membershipId: string, role: string) {
+  async function handleRoleChange(membershipId: string, choice: string) {
+    // "custom:<id>" is one of the company's own roles.
+    const custom = choice.startsWith("custom:")
+      ? companyRoles.find((r) => r.id === choice.slice("custom:".length))
+      : undefined;
+    const role = custom ? custom.baseRole : choice;
+
     try {
       setProcessingId(membershipId);
       setError("");
@@ -228,7 +257,7 @@ export default function UsersSettingsPage() {
       const res = await fetch(`/api/memberships/${membershipId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify(custom ? { customRoleId: custom.id } : { role }),
       });
 
       const data = await res.json();
@@ -239,7 +268,11 @@ export default function UsersSettingsPage() {
       setSuccess("User role updated successfully!");
       toast.success("Role updated");
       setMembers((prev) =>
-        prev.map((m) => (m.id === membershipId ? { ...m, role } : m))
+        prev.map((m) =>
+          m.id === membershipId
+            ? { ...m, role, customRoleId: custom?.id ?? null, customRoleName: custom?.name ?? null }
+            : m,
+        ),
       );
     } catch (err) {
       const message =
@@ -383,6 +416,14 @@ export default function UsersSettingsPage() {
                   <TableRow key={member.id}>
                     <TableCell className="font-medium text-foreground">
                       {member.name}
+                      {member.sharedLogin && (
+                        <span
+                          className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                          title="This person also belongs to another company and signs in with one login."
+                        >
+                          Also in another company
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {member.email}
@@ -394,7 +435,7 @@ export default function UsersSettingsPage() {
                         </Badge>
                       ) : (
                         <Select
-                          value={member.role}
+                          value={member.customRoleId ? `custom:${member.customRoleId}` : member.role}
                           onValueChange={(value) =>
                             handleRoleChange(member.id, value ?? member.role)
                           }
@@ -412,6 +453,9 @@ export default function UsersSettingsPage() {
                             <SelectItem value="manager">Manager</SelectItem>
                             <SelectItem value="employee">Employee</SelectItem>
                             <SelectItem value="member">Member</SelectItem>
+                            {companyRoles.map((r) => (
+                              <SelectItem key={r.id} value={`custom:${r.id}`}>{r.name}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       )}
@@ -420,7 +464,7 @@ export default function UsersSettingsPage() {
                       {formatDate(member.createdAt)}
                     </TableCell>
                     <TableCell className="space-x-2 whitespace-nowrap text-right">
-                      {canSetPassword(myRole, member.role) && (
+                      {canSetPassword(myRole, member.role) && !member.sharedLogin && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -433,7 +477,7 @@ export default function UsersSettingsPage() {
                           <KeyRoundIcon /> Set password
                         </Button>
                       )}
-                      {member.twoFactor && canSetPassword(myRole, member.role) && (
+                      {member.twoFactor && !member.sharedLogin && canSetPassword(myRole, member.role) && (
                         <Button variant="outline" size="sm" onClick={() => setTwoFactorTarget(member)}>
                           <ShieldOffIcon /> Reset 2FA
                         </Button>
@@ -508,7 +552,7 @@ export default function UsersSettingsPage() {
                 onChange={(e) => setNewPassword(e.target.value)}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                Gives them a login right away (their email is the user ID). Leave blank if they will sign up themselves. The password is stored hashed and cannot be viewed later, only replaced.
+                Gives them a login right away (their email is the user ID). If this email already has a login, for example in another company, they simply get access here and keep signing in with their own password. The password is stored hashed and cannot be viewed later, only replaced.
               </p>
             </div>
 
@@ -527,6 +571,9 @@ export default function UsersSettingsPage() {
                   <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="employee">Employee</SelectItem>
                   <SelectItem value="member">Member</SelectItem>
+                  {companyRoles.map((r) => (
+                    <SelectItem key={r.id} value={`custom:${r.id}`}>{r.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

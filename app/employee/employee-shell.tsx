@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { errorText } from "@/lib/format/error-text";
+import { CompanyItem, useMyCompanies } from "@/components/shared/company-switcher";
 
 // Re-exported so existing imports keep working.
 export { useEmployee } from "@/components/layout/employee-context";
@@ -68,6 +69,7 @@ export default function EmployeeShell({
 
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [twoFactorOpen, setTwoFactorOpen] = useState(false);
+  const companies = useMyCompanies();
   const displayVersion = useDisplayPrefs();
   const pathnameForTitle = usePathname();
   const section = NAV_SECTIONS.filter(
@@ -273,6 +275,19 @@ export default function EmployeeShell({
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
+                  {companies.length > 1 && (
+                    <>
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Switch company
+                        </DropdownMenuLabel>
+                      </DropdownMenuGroup>
+                      {companies.map((company) => (
+                        <CompanyItem key={company.tenantId} company={company} />
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   {hasConsole && (
                     <DropdownMenuItem onClick={() => router.push("/")}>
                       <LayoutDashboardIcon />

@@ -208,7 +208,7 @@ export default function AccessRequestsPage() {
       const res = await fetch("/api/admin/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(company),
+        body: JSON.stringify({ ...company, password: company.password || undefined }),
       });
       const data = await res.json();
 
@@ -634,17 +634,19 @@ export default function AccessRequestsPage() {
             <div>
               <Label htmlFor="co-pass" className="mb-1.5">Password</Label>
               <div className="flex gap-2">
-                <Input id="co-pass" required minLength={12} maxLength={128} autoComplete="off" value={company.password} onChange={(e) => setCompany({ ...company, password: e.target.value })} />
+                <Input id="co-pass" minLength={12} maxLength={128} autoComplete="off" value={company.password} onChange={(e) => setCompany({ ...company, password: e.target.value })} />
                 <Button type="button" variant="outline" onClick={() => setCompany({ ...company, password: generatePassword() })}>
                   Generate
                 </Button>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                At least 12 characters. Leave it empty if this email already has a login (for example the owner has another company here): that same login becomes the owner of this company and keeps its password.
+              </p>
             </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={saving || company.password.length < 12}>
+              <Button type="submit" disabled={saving || (company.password.length > 0 && company.password.length < 12)}>
                 {saving ? "Creating…" : "Create company"}
               </Button>
             </DialogFooter>

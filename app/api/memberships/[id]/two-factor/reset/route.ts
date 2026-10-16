@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
 import { users } from "@/db/schema/users";
 import { requireRole } from "@/lib/auth/authorization";
-import { canSetPasswordFor, resetTwoFactor } from "@/lib/auth/credentials";
+import { SHARED_LOGIN_MESSAGE, belongsToOtherCompany, canSetPasswordFor, resetTwoFactor } from "@/lib/auth/credentials";
 import type { Role } from "@/lib/auth/permissions";
 import { logAudit } from "@/lib/domain/audit";
 import { createNotification } from "@/lib/domain/notifications";
@@ -50,6 +50,10 @@ export async function POST(request: Request, { params }: Ctx) {
         { error: "You cannot reset this person's two-factor sign-in" },
         { status: 403 },
       );
+    }
+
+    if (await belongsToOtherCompany(target.userId, auth.tenant.id)) {
+      return NextResponse.json({ error: SHARED_LOGIN_MESSAGE }, { status: 409 });
     }
 
     const reset = await resetTwoFactor(target.email);

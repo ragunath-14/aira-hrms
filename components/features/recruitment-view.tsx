@@ -5,10 +5,13 @@ import {
   ArrowRightIcon,
   BriefcaseIcon,
   ChevronDownIcon,
+  DownloadIcon,
+  GlobeIcon,
   MoreHorizontalIcon,
   PhoneIcon,
   PlusIcon,
   SearchIcon,
+  StarIcon,
   Trash2Icon,
   UserPlusIcon,
 } from "lucide-react";
@@ -25,6 +28,7 @@ import {
   selectClass,
 } from "@/components/shared/ui-bits";
 import { Button } from "@/components/ui/button";
+import { CareersPanel } from "@/components/features/careers-panel";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +60,7 @@ type Job = {
   employmentType: string;
   openings: number;
   status: "open" | "closed";
+  published: boolean;
   candidateCount: number;
 };
 
@@ -67,6 +72,11 @@ type Candidate = {
   phone: string | null;
   stage: string;
   notes: string | null;
+  source: string;
+  coverNote: string | null;
+  resumeName: string | null;
+  score: number | null;
+  createdAt: string;
 };
 
 type Department = { id: string; name: string };
@@ -125,6 +135,7 @@ export function RecruitmentView() {
     employmentType: "full_time",
     openings: "1",
     description: "",
+    published: false,
   });
 
   const [candForm, setCandForm] = useState(false);
@@ -138,6 +149,8 @@ export function RecruitmentView() {
   const [overStage, setOverStage] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Job | null>(null);
   const [candToDelete, setCandToDelete] = useState<Candidate | null>(null);
+  const [review, setReview] = useState<Candidate | null>(null);
+  const [reviewNotes, setReviewNotes] = useState("");
 
   async function load() {
     try {
@@ -260,6 +273,31 @@ export function RecruitmentView() {
     setCandToDelete(null);
   }
 
+  function openReview(c: Candidate) {
+    setReview(c);
+    setReviewNotes(c.notes ?? "");
+  }
+
+  async function saveReview(changes: { notes?: string | null; score?: number | null }) {
+    if (!review) return;
+
+    const res = await fetch(`/api/candidates/${review.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(changes),
+    });
+
+    if (!res.ok) {
+      toast.error(await apiError(res, "Could not save"));
+      return;
+    }
+
+    const updated = await res.json();
+    setReview(updated);
+    setCandidates((current) => current.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
+    toast.success("Saved");
+  }
+
   const openJobs = jobs.filter((j) => j.status === "open");
 
   return (
@@ -287,6 +325,8 @@ export function RecruitmentView() {
       />
 
       <ErrorBanner message={error} />
+
+      <CareersPanel />
 
       {loading ? (
         <Skeleton className="h-72 w-full rounded-xl" />
@@ -321,7 +361,14 @@ export function RecruitmentView() {
                       {[j.departmentName, j.location, labelize(j.employmentType)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <Pill tone={j.status === "open" ? "green" : "gray"}>{labelize(j.status)}</Pill>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <Pill tone={j.status === "open" ? "green" : "gray"}>{labelize(j.status)}</Pill>
+                    {j.published && j.status === "open" && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary">
+                        <GlobeIcon className="size-3" /> On careers page
+                      </span>
+                    )}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-2 text-sm">
@@ -329,6 +376,13 @@ export function RecruitmentView() {
                     {j.openings} {j.openings === 1 ? "position" : "positions"} · {j.candidateCount} candidates
                   </span>
                   <span className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => patch(`/api/jobs/${j.id}`, { published: !j.published })}
+                    >
+                      {j.published ? "Unpublish" : "Publish"}
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -477,7 +531,13 @@ export function RecruitmentView() {
                             {initialsOf(c.name)}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold leading-tight">{c.name}</p>
+                            <button
+                              type="button"
+                              onClick={() => openReview(c)}
+                              className="block max-w-full truncate text-left text-sm font-semibold leading-tight hover:text-primary hover:underline"
+                            >
+                              {c.name}
+                            </button>
                             <p className="truncate text-xs text-muted-foreground">{c.email}</p>
                           </div>
 
@@ -514,8 +574,20 @@ export function RecruitmentView() {
                           </DropdownMenu>
                         </div>
 
-                        {(selected === "all" || c.phone) && (
+                        {(selected === "all" || c.phone || c.source !== "manual" || c.score) && (
                           <div className="flex flex-wrap gap-1.5">
+                            {c.source !== "manual" && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                                <GlobeIcon className="size-3 shrink-0" />
+                                Website
+                              </span>
+                            )}
+                            {c.score ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                <StarIcon className="size-3 shrink-0" />
+                                {c.score}/5
+                              </span>
+                            ) : null}
                             {selected === "all" && (
                               <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
                                 <BriefcaseIcon className="size-3 shrink-0" />
@@ -588,6 +660,7 @@ export function RecruitmentView() {
                   employmentType: job.employmentType,
                   openings: Number(job.openings) || 1,
                   description: job.description || null,
+                  published: job.published,
                 },
                 "Job opening created",
                 () => {
@@ -634,6 +707,21 @@ export function RecruitmentView() {
               <Label htmlFor="job-desc" className="mb-1.5">Description</Label>
               <Textarea id="job-desc" rows={3} value={job.description} onChange={(e) => setJob({ ...job, description: e.target.value })} />
             </div>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={job.published}
+                onChange={(e) => setJob({ ...job, published: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">Show on the careers page</span>
+                <span className="block text-xs text-muted-foreground">
+                  Visitors to your website can see this opening and apply. You can change this later.
+                </span>
+              </span>
+            </label>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setJobForm(false)}>Cancel</Button>
@@ -700,6 +788,75 @@ export function RecruitmentView() {
               <Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add candidate"}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!review} onOpenChange={(o) => !o && setReview(null)}>
+        <DialogContent className="sm:max-w-lg">
+          {review && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{review.name}</DialogTitle>
+                <DialogDescription>
+                  {jobTitle(review.jobId)} · {labelize(review.stage)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 text-sm">
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+                  <dt className="text-muted-foreground">Email</dt>
+                  <dd className="break-all">{review.email}</dd>
+                  <dt className="text-muted-foreground">Phone</dt>
+                  <dd>{review.phone || "—"}</dd>
+                  <dt className="text-muted-foreground">Source</dt>
+                  <dd>{review.source === "manual" ? "Added by the team" : "Website (API)"}</dd>
+                  <dt className="text-muted-foreground">Applied</dt>
+                  <dd>{new Date(review.createdAt).toLocaleDateString()}</dd>
+                </dl>
+
+                {review.resumeName && (
+                  <Button variant="outline" size="sm" render={<a href={`/api/candidates/${review.id}/resume`} />}>
+                    <DownloadIcon /> Resume ({review.resumeName})
+                  </Button>
+                )}
+
+                {review.coverNote && (
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Cover note</p>
+                    <p className="whitespace-pre-wrap rounded-lg bg-muted/40 p-3">{review.coverNote}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Rating</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        aria-label={`Rate ${n} out of 5`}
+                        aria-pressed={review.score === n}
+                        onClick={() => saveReview({ score: review.score === n ? null : n })}
+                        className="rounded p-0.5 hover:bg-muted"
+                      >
+                        <StarIcon className={`size-5 ${review.score && n <= review.score ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="review-notes" className="mb-1.5">Team notes</Label>
+                  <Textarea id="review-notes" rows={3} maxLength={1000} value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setReview(null)}>Close</Button>
+                <Button type="button" onClick={() => saveReview({ notes: reviewNotes.trim() || null })}>Save notes</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

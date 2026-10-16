@@ -1,11 +1,14 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
 import { tenants } from "@/db/schema/tenants";
 import { users } from "@/db/schema/users";
+import { customRoles } from "@/db/schema/custom-roles";
+import { denialFor, sanitizePermissions, type CustomRolePermissions } from "@/lib/auth/custom-roles";
 import { employees } from "@/db/schema/employees";
 import { leaveBalances, leaveTypes } from "@/db/schema/leaves";
+import { chooseMembership, readActiveTenantId } from "@/lib/auth/active-tenant";
 import { auth } from "@/lib/auth/server";
 import {
   hasPermission,
@@ -71,14 +74,16 @@ async function getCurrentTenantContext(request: Request) {
     return null;
   }
 
-  const key = session.user.email;
+  // Which of their companies the person is working in (see active-tenant.ts).
+  const preferred = readActiveTenantId(request.headers.get("cookie"));
+  const key = `${session.user.email}|${preferred ?? ""}`;
   const hit = tenantContextCache.get(key);
 
   if (hit && hit.expires > Date.now()) {
     return hit.value;
   }
 
-  const value = await loadTenantContext(key);
+  const value = await loadTenantContext(session.user.email, preferred);
 
   if (value) {
     tenantContextCache.set(key, {
@@ -92,24 +97,35 @@ async function getCurrentTenantContext(request: Request) {
   return value;
 }
 
-async function loadTenantContext(email: string) {
+async function loadTenantContext(email: string, preferred: string | null) {
 
   // A single joined query instead of three sequential round-trips
   // (user -> membership -> tenant) — each round-trip adds real latency,
   // so collapsing them matters a lot under network latency to the DB.
-  const [row] = await db
+  // A person can belong to several companies: take them all, then pick the
+  // one they are working in.
+  const all = await db
     .select({
       user: users,
       membershipId: memberships.id,
       membershipTenantId: memberships.tenantId,
       membershipRole: memberships.role,
+      customRoleId: memberships.customRoleId,
+      customRoleName: customRoles.name,
+      customRolePermissions: customRoles.permissions,
       tenant: tenants,
     })
     .from(users)
     .innerJoin(memberships, eq(memberships.userId, users.id))
     .innerJoin(tenants, eq(tenants.id, memberships.tenantId))
+    .leftJoin(customRoles, eq(customRoles.id, memberships.customRoleId))
     .where(eq(users.email, email))
-    .limit(1);
+    .orderBy(asc(memberships.createdAt), asc(memberships.id));
+
+  const row = chooseMembership(
+    all.map((r) => ({ ...r, tenantId: r.membershipTenantId, accessStatus: r.tenant.accessStatus })),
+    preferred,
+  );
 
   if (!row) {
     return null;
@@ -129,7 +145,32 @@ async function loadTenantContext(email: string) {
       tenantId: row.membershipTenantId,
       role: row.membershipRole as Role,
     },
+    // Set when this person was given one of the company's own roles. It only
+    // ever narrows what their built-in role allows (see custom-roles.ts).
+    customRole:
+      row.customRoleId && row.customRoleName
+        ? {
+            id: row.customRoleId,
+            name: row.customRoleName,
+            permissions: sanitizePermissions(row.customRolePermissions) as CustomRolePermissions,
+          }
+        : null,
   };
+}
+
+// The reason a custom role blocks this request, or null.
+function customRoleDenial(
+  context: NonNullable<Awaited<ReturnType<typeof getCurrentTenant>>>,
+  request: Request,
+) {
+  if (!context.customRole) return null;
+
+  return denialFor(
+    context.customRole.name,
+    context.customRole.permissions,
+    new URL(request.url).pathname,
+    request.method,
+  );
 }
 
 export async function requirePermission(
@@ -154,6 +195,12 @@ export async function requirePermission(
       status: 403,
       error: "Forbidden",
     };
+  }
+
+  const denied = customRoleDenial(context, request);
+
+  if (denied) {
+    return { authorized: false as const, status: 403, error: denied };
   }
 
   return {
@@ -208,6 +255,20 @@ export async function requireRole(
       status: 403,
       error: "Forbidden",
     };
+  }
+
+  const denied = customRoleDenial(context, request);
+
+  if (denied) {
+    // Endpoints open to employees are everyone's own pages (my leave, my
+    // tickets) that show a company-wide view to HR and managers. A person whose
+    // company role does not cover this area still gets their own page, just
+    // not the company-wide view.
+    if (roles.includes("employee")) {
+      return { authorized: true as const, ...context, role: "employee" as Role };
+    }
+
+    return { authorized: false as const, status: 403, error: denied };
   }
 
   return {

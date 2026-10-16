@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronsUpDownIcon, KeyRoundIcon, LockIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
+import { KeyRoundIcon, LockIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
 import { ChangePasswordDialog } from "@/components/shared/change-password-dialog";
 import { TwoFactorDialog } from "@/components/shared/two-factor-dialog";
+import { WorkspaceSwitcher } from "@/components/shared/company-switcher";
+import { canViewPage, type CustomRolePermissions } from "@/lib/auth/custom-roles";
 import { authClient } from "@/lib/auth/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -31,6 +33,8 @@ type TenantContext = {
   user: { name: string; email: string };
   tenant: { name: string; slug: string };
   membership: { role: string };
+  // A company role that narrows what this person may open.
+  customRole?: { name: string; permissions: CustomRolePermissions } | null;
 };
 
 const mainItems: NavItem[] = [
@@ -337,20 +341,7 @@ export default function Sidebar({
         <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/35">
           Workspace
         </p>
-        <div className="flex items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent/40 px-2.5 py-2">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-xs font-bold text-sidebar-accent-foreground">
-            {(ctx?.tenant?.name ?? "?").charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-sidebar-foreground">
-              {ctx?.tenant?.name ?? "Loading…"}
-            </p>
-            <p className="truncate text-[11px] text-sidebar-foreground/45">
-              {ctx?.tenant?.slug ? `${ctx.tenant.slug}.aira-hrms` : "Isolated workspace"}
-            </p>
-          </div>
-          <ChevronsUpDownIcon className="size-3.5 shrink-0 text-sidebar-foreground/35" />
-        </div>
+        <WorkspaceSwitcher name={ctx?.tenant?.name} slug={ctx?.tenant?.slug} />
       </div>
 
       {/* Navigation */}
@@ -363,6 +354,7 @@ export default function Sidebar({
             pathname={pathname}
             unreadCount={unreadCount}
             role={ctx?.membership?.role}
+            permissions={ctx?.customRole?.permissions}
           />
         ))}
       </nav>
@@ -438,17 +430,22 @@ function NavSection({
   pathname,
   unreadCount,
   role,
+  permissions,
 }: {
   title: string;
   items: NavItem[];
   pathname: string;
   unreadCount: number;
   role: string | undefined;
+  permissions?: CustomRolePermissions | null;
 }) {
   // Links a role cannot use (their API would answer 403) are hidden rather
-  // than shown. Until the role is known, restricted links stay hidden too.
+  // than shown. Until the role is known, restricted links stay hidden too. A
+  // company role hides the areas it does not allow viewing.
   const visible = items.filter(
-    (item) => !item.roles || (role !== undefined && item.roles.includes(role)),
+    (item) =>
+      (!item.roles || (role !== undefined && item.roles.includes(role))) &&
+      canViewPage(permissions, item.href),
   );
 
   if (visible.length === 0) {

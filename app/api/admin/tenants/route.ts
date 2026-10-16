@@ -99,7 +99,10 @@ const createSchema = z.object({
   companyName: z.string().trim().min(2).max(120),
   ownerName: z.string().trim().min(2).max(120),
   ownerEmail: z.string().trim().toLowerCase().email().max(200),
-  password: z.string().min(12).max(128),
+  // Needed for a brand-new login. Leave it out when the owner's email already
+  // has a login (for example they own another company): that same login then
+  // becomes the owner of this company and its password is not touched.
+  password: z.string().min(12).max(128).optional(),
 
   // Subscription plan the company starts on; changeable later.
   plan: z.enum(PLAN_IDS as [string, ...string[]]).default(DEFAULT_PLAN),
@@ -166,20 +169,40 @@ export async function POST(request: Request) {
 
     const { companyName, ownerName, ownerEmail, password, ...details } = parsed.data;
 
-    // An email that already has a login could belong to another company.
+    // An email that already has a login may belong to another company. That is
+    // allowed (one login, several companies), but then its password is never set
+    // here: the person keeps signing in with their own.
     const [existing] = await db
-      .select({ id: users.id })
+      .select()
       .from(users)
       .where(eq(users.email, ownerEmail))
       .limit(1);
 
     const authCtx = await auth$context();
     const existingLogin = await authCtx.internalAdapter.findUserByEmail(ownerEmail);
+    const hasAccount = Boolean(existing || existingLogin);
 
-    if (existing || existingLogin) {
+    if (existing?.isSuperAdmin) {
       return NextResponse.json(
-        { error: "A user with this email already exists" },
+        { error: "A platform administrator cannot also own a company" },
         { status: 409 },
+      );
+    }
+
+    if (hasAccount && password) {
+      return NextResponse.json(
+        {
+          error:
+            "This email already has a login. Leave the password empty to make that same login the owner of this company (its password stays as it is).",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (!hasAccount && !password) {
+      return NextResponse.json(
+        { error: "Enter a password of 12 to 128 characters for the new login" },
+        { status: 400 },
       );
     }
 
@@ -202,10 +225,14 @@ export async function POST(request: Request) {
       })
       .returning();
 
-    const [owner] = await db
-      .insert(users)
-      .values({ name: ownerName, email: ownerEmail })
-      .returning();
+    const owner =
+      existing ??
+      (
+        await db
+          .insert(users)
+          .values({ name: existingLogin?.user.name ?? ownerName, email: ownerEmail })
+          .returning()
+      )[0];
 
     await db.insert(memberships).values({
       userId: owner.id,
@@ -213,13 +240,15 @@ export async function POST(request: Request) {
       role: "owner",
     });
 
-    try {
-      await setLoginPassword({ email: ownerEmail, name: ownerName, password });
-    } catch (loginError) {
-      // Do not leave a company without a way to sign in.
-      await db.delete(tenants).where(eq(tenants.id, tenant.id));
-      await db.delete(users).where(eq(users.id, owner.id));
-      throw loginError;
+    if (!hasAccount && password) {
+      try {
+        await setLoginPassword({ email: ownerEmail, name: ownerName, password });
+      } catch (loginError) {
+        // Do not leave a company without a way to sign in.
+        await db.delete(tenants).where(eq(tenants.id, tenant.id));
+        await db.delete(users).where(eq(users.id, owner.id));
+        throw loginError;
+      }
     }
 
     await logAudit({
@@ -231,7 +260,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { id: tenant.id, companyName: tenant.name, ownerEmail },
+      { id: tenant.id, companyName: tenant.name, ownerEmail, existingLogin: hasAccount },
       { status: 201 },
     );
   } catch (error) {

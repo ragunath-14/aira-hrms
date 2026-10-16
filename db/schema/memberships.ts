@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
+import { customRoles } from "./custom-roles";
 import { users } from "./users";
 
 export const memberships = pgTable(
@@ -23,7 +24,12 @@ export const memberships = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
 
+    // The built-in role this person acts as. When they were given a custom
+    // role it is that role's base role, so everything that checks `role` keeps
+    // working; customRoleId then narrows what they may do.
     role: text("role").notNull(),
+
+    customRoleId: uuid("custom_role_id").references(() => customRoles.id),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

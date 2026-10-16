@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { AnalyticsReport } from "@/components/features/analytics-report";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useIsHr } from "@/hooks/use-is-hr";
 import { StatCard } from "@/components/shared/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,7 +49,7 @@ type ReportData = {
   };
 };
 
-export default function ReportsPage() {
+function ReportsOverview() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -76,12 +79,7 @@ export default function ReportsPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <PageHeader
-        title="Reports"
-        description="HRMS summary and workforce reports."
-      />
-
+    <div>
       {error && (
         <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
@@ -228,6 +226,54 @@ function SummaryRow({
     <div className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="font-semibold text-foreground">{value}</span>
+    </div>
+  );
+}
+
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "headcount", label: "Headcount" },
+  { id: "attendance", label: "Attendance" },
+  { id: "leave", label: "Leave" },
+  { id: "payroll", label: "Payroll cost" },
+] as const;
+
+export default function ReportsPage() {
+  const isHr = useIsHr();
+  const [tab, setTab] = useState<string>("overview");
+
+  // Managers see the overview; the detailed reports are for owner, admin and HR.
+  const tabs = isHr ? TABS : TABS.slice(0, 1);
+
+  return (
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Reports"
+        description="Workforce summary, headcount, attendance, leave and payroll cost, with filters and CSV downloads."
+      />
+
+      <Tabs value={tab} onValueChange={(value) => setTab(String(value))}>
+        <TabsList variant="line" className="mb-5">
+          {tabs.map((item) => (
+            <TabsTrigger key={item.id} value={item.id}>
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="overview">
+          <ReportsOverview />
+        </TabsContent>
+
+        {isHr && (
+          <>
+            <TabsContent value="headcount">{tab === "headcount" && <AnalyticsReport report="headcount" />}</TabsContent>
+            <TabsContent value="attendance">{tab === "attendance" && <AnalyticsReport report="attendance" />}</TabsContent>
+            <TabsContent value="leave">{tab === "leave" && <AnalyticsReport report="leave" />}</TabsContent>
+            <TabsContent value="payroll">{tab === "payroll" && <AnalyticsReport report="payroll" />}</TabsContent>
+          </>
+        )}
+      </Tabs>
     </div>
   );
 }

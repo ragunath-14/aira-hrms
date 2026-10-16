@@ -31,6 +31,13 @@ function isCrossSiteWrite(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
+  // The API (/api/v1) is called by a company's own server with an API key, which
+  // each route checks itself. (/api/internal) is for a scheduler and checks its
+  // own secret. Neither has a login session.
+  if (request.nextUrl.pathname.startsWith("/api/v1/") || request.nextUrl.pathname.startsWith("/api/internal/")) {
+    return NextResponse.next();
+  }
+
   // No public sign-up: companies and logins are created by the platform owner
   // (and company owners create their own users). Server-side code can still
   // create accounts directly; only the public endpoint is closed.

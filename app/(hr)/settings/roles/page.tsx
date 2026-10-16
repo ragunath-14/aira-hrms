@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckIcon, XIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { CustomRolesPanel } from "@/components/features/custom-roles-panel";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -96,11 +97,15 @@ export default function RolesPermissionsPage() {
         description="Access matrix showing granular permissions configured for each organization role."
       />
 
+      <CustomRolesPanel />
+
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
+
+      <h2 className="mb-3 text-lg font-semibold text-foreground">Built-in roles</h2>
 
       <Card className="overflow-hidden p-0">
         {loading ? (

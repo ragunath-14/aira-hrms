@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
+import { customRoles } from "@/db/schema/custom-roles";
 import {
   invalidateTenantContextCache,
   requireRole,
@@ -37,7 +38,35 @@ export async function PATCH(
       return Response.json({ error: "Invalid id" }, { status: 400 });
     }
     const body = await request.json();
-    const role = body.role?.trim() as Role;
+
+    // Either a built-in role, or one of the company's own (which carries the
+    // built-in role it starts from).
+    let customRoleId: string | null = null;
+    let role = body.role?.trim() as Role;
+
+    if (body.customRoleId) {
+      if (!isUuid(String(body.customRoleId))) {
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      }
+
+      const [custom] = await db
+        .select({ id: customRoles.id, baseRole: customRoles.baseRole })
+        .from(customRoles)
+        .where(
+          and(
+            eq(customRoles.id, String(body.customRoleId)),
+            eq(customRoles.tenantId, authResult.tenant.id),
+          ),
+        )
+        .limit(1);
+
+      if (!custom) {
+        return NextResponse.json({ error: "Role not found" }, { status: 404 });
+      }
+
+      customRoleId = custom.id;
+      role = custom.baseRole as Role;
+    }
 
     if (!role) {
       return NextResponse.json(
@@ -80,6 +109,15 @@ export async function PATCH(
       );
     }
 
+    // Your own role is not yours to change: someone with a restricted role
+    // could otherwise lift their own restriction.
+    if (existing.userId === authResult.user.id) {
+      return NextResponse.json(
+        { error: "You cannot change your own role" },
+        { status: 400 },
+      );
+    }
+
     if (existing.role === "owner" && role !== "owner") {
       return NextResponse.json(
         { error: "Cannot change role of the tenant owner" },
@@ -91,6 +129,7 @@ export async function PATCH(
       .update(memberships)
       .set({
         role,
+        customRoleId,
       })
       .where(eq(memberships.id, id))
       .returning();

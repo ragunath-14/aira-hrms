@@ -2,12 +2,14 @@ import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { memberships } from "@/db/schema/memberships";
+import { customRoles } from "@/db/schema/custom-roles";
 import { users } from "@/db/schema/users";
 import { requireRole } from "@/lib/auth/authorization";
 import { ROLES, type Role } from "@/lib/auth/permissions";
 import { canSetPasswordFor, setLoginPassword } from "@/lib/auth/credentials";
 import { logAudit } from "@/lib/domain/audit";
 import { checkCanAddPeople } from "@/lib/domain/plans";
+import { auth } from "@/lib/auth/server";
 import { membershipCreateSchema } from "@/lib/validation/schemas";
 
 export async function GET(request: Request) {
@@ -35,10 +37,15 @@ export async function GET(request: Request) {
         email: users.email,
         role: memberships.role,
         createdAt: memberships.createdAt,
+        customRoleId: memberships.customRoleId,
+        customRoleName: customRoles.name,
         twoFactor: sql<boolean>`coalesce((select au.two_factor_enabled from "user" au where lower(au.email) = lower(${users.email}) limit 1), false)`,
+        // Also a member of another company: their sign-in is theirs to change.
+        sharedLogin: sql<boolean>`exists (select 1 from memberships m2 where m2.user_id = ${memberships.userId} and m2.tenant_id <> ${memberships.tenantId})`,
       })
       .from(memberships)
       .innerJoin(users, eq(memberships.userId, users.id))
+      .leftJoin(customRoles, eq(customRoles.id, memberships.customRoleId))
       .where(eq(memberships.tenantId, authResult.tenant.id));
 
     return NextResponse.json(tenantMembers);
@@ -79,8 +86,26 @@ export async function POST(request: Request) {
 
     const email = parsed.data.email?.trim();
     const name = parsed.data.name?.trim();
-    const role = parsed.data.role as Role;
+    let role = parsed.data.role as Role;
     let userId = parsed.data.userId;
+
+    // A company role carries the built-in role it starts from.
+    let customRoleId: string | null = null;
+
+    if (parsed.data.customRoleId) {
+      const [custom] = await db
+        .select({ id: customRoles.id, baseRole: customRoles.baseRole })
+        .from(customRoles)
+        .where(and(eq(customRoles.id, parsed.data.customRoleId), eq(customRoles.tenantId, authResult.tenant.id)))
+        .limit(1);
+
+      if (!custom) {
+        return NextResponse.json({ error: "Role not found" }, { status: 404 });
+      }
+
+      customRoleId = custom.id;
+      role = custom.baseRole as Role;
+    }
 
     const allowedRoles: Role[] = [
       ROLES.HR,
@@ -106,6 +131,12 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+
+    // Someone who already has a login (here or in another company) keeps their
+    // own password: adding them to this company never changes it.
+    const loginExisted = Boolean(
+      email && (await (await auth.$context).internalAdapter.findUserByEmail(email)),
+    );
 
     const planProblem = await checkCanAddPeople(authResult.tenant);
 
@@ -182,6 +213,7 @@ export async function POST(request: Request) {
         userId,
         tenantId: authResult.tenant.id,
         role,
+        customRoleId,
       })
       .returning();
 
@@ -193,7 +225,7 @@ export async function POST(request: Request) {
       entityId: membership.id,
     });
 
-    if (parsed.data.password && email) {
+    if (parsed.data.password && email && !loginExisted) {
       await setLoginPassword({
         email: user.email,
         name: user.name,
@@ -210,7 +242,12 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { membership, user },
+      {
+        membership,
+        user,
+        // They already had a login, so any password sent was not applied.
+        loginExisted: Boolean(parsed.data.password) && loginExisted,
+      },
       { status: 201 },
     );
   } catch (error) {

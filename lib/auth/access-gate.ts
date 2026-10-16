@@ -1,11 +1,10 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { memberships } from "@/db/schema/memberships";
-import { tenants } from "@/db/schema/tenants";
 import { users } from "@/db/schema/users";
+import { ACTIVE_TENANT_COOKIE, getActiveMembership, validTenantId } from "@/lib/auth/active-tenant";
 import { auth } from "@/lib/auth/server";
 
 // Server-side page guard: a signed-in user whose company the platform owner
@@ -17,18 +16,22 @@ export async function requireApprovedCompany() {
   // Signed-out visitors are handled by the proxy.
   if (!session) return;
 
-  const [row] = await db
-    .select({
-      isSuperAdmin: users.isSuperAdmin,
-      accessStatus: tenants.accessStatus,
-    })
+  const [person] = await db
+    .select({ id: users.id, isSuperAdmin: users.isSuperAdmin })
     .from(users)
-    .leftJoin(memberships, eq(memberships.userId, users.id))
-    .leftJoin(tenants, eq(tenants.id, memberships.tenantId))
     .where(eq(users.email, session.user.email))
     .limit(1);
 
-  if (!row || !row.accessStatus || row.accessStatus === "approved") return;
+  if (!person) return;
 
-  redirect(row.isSuperAdmin ? "/admin" : "/pending-approval");
+  // The company they are working in: their choice if it is one of theirs and
+  // approved, otherwise their first approved one.
+  const active = await getActiveMembership(
+    person.id,
+    validTenantId((await cookies()).get(ACTIVE_TENANT_COOKIE)?.value),
+  );
+
+  if (!active || active.accessStatus === "approved") return;
+
+  redirect(person.isSuperAdmin ? "/admin" : "/pending-approval");
 }

@@ -32,7 +32,9 @@ export async function GET(request: Request) {
     // Payroll totals are compensation data: the payroll APIs are limited
     // to owner/admin/hr, so managers get the rest of the dashboard without
     // company-wide pay figures.
-    const canViewPayroll = ["owner", "admin", "hr"].includes(auth.role);
+    const canViewPayroll =
+      ["owner", "admin", "hr"].includes(auth.role) &&
+      (!auth.customRole || Boolean(auth.customRole.permissions.payroll?.includes("view")));
 
     const today = new Date().toISOString().slice(0, 10);
     const thirtyDaysAgo = new Date();

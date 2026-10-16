@@ -14,6 +14,7 @@ import { tenants } from "./tenants";
 import { users } from "./users";
 import { employees } from "./employees";
 import { departments } from "./organization";
+import { bytea } from "./employee-documents";
 
 const tenantFk = () =>
   uuid("tenant_id")
@@ -67,6 +68,8 @@ export const jobOpenings = pgTable(
     // open | closed
     status: text("status").notNull().default("open"),
     description: text("description"),
+    // Shown on the company's own careers page (only while the job is open).
+    published: boolean("published").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [index("job_openings_tenant_idx").on(t.tenantId)],
@@ -86,12 +89,33 @@ export const candidates = pgTable(
     // applied | screening | interview | offer | hired | rejected
     stage: text("stage").notNull().default("applied"),
     notes: text("notes"),
+    // manual (added by HR) | careers_page (applied on the company's website)
+    source: text("source").notNull().default("manual"),
+    coverNote: text("cover_note"),
+    resumeName: text("resume_name"),
+    resumeMime: text("resume_mime"),
+    resumeSize: integer("resume_size"),
+    // The team's rating, 1 to 5.
+    score: integer("score"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [
     index("candidates_tenant_idx").on(t.tenantId),
     index("candidates_job_idx").on(t.jobId),
   ],
+);
+
+// The bytes of a resume, kept apart so listing candidates never loads files.
+export const candidateResumes = pgTable(
+  "candidate_resumes",
+  {
+    candidateId: uuid("candidate_id")
+      .primaryKey()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    tenantId: tenantFk(),
+    data: bytea("data").notNull(),
+  },
+  (t) => [index("candidate_resumes_tenant_idx").on(t.tenantId)],
 );
 
 // ---- Onboarding / offboarding checklists ---------------------------------

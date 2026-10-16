@@ -7,7 +7,7 @@ import { memberships } from "@/db/schema/memberships";
 import { users } from "@/db/schema/users";
 import { logAudit } from "@/lib/domain/audit";
 import { requireRole } from "@/lib/auth/authorization";
-import { canSetPasswordFor, setLoginPassword } from "@/lib/auth/credentials";
+import { SHARED_LOGIN_MESSAGE, belongsToOtherCompany, canSetPasswordFor, setLoginPassword } from "@/lib/auth/credentials";
 import { isUuid } from "@/lib/validation/ids";
 import { createNotification } from "@/lib/domain/notifications";
 import type { Role } from "@/lib/auth/permissions";
@@ -71,6 +71,10 @@ export async function PUT(request: Request, { params }: RouteContext) {
         { error: "You cannot change this user's password" },
         { status: 403 },
       );
+    }
+
+    if (await belongsToOtherCompany(target.userId, auth.tenant.id)) {
+      return NextResponse.json({ error: SHARED_LOGIN_MESSAGE }, { status: 409 });
     }
 
     const created = await setLoginPassword({

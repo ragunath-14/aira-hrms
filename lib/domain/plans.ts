@@ -1,14 +1,14 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { employeeDocuments, employees, memberships } from "@/db/schema";
+import { candidates, employeeDocuments, employees, memberships } from "@/db/schema";
 import { resolveLimits, type PlanFields } from "@/lib/config/plans";
 import { formatDate } from "@/lib/format/date";
 
 // How much a company is using: people (the larger of its employee records and
 // its logins, so neither route past the limit) and stored document bytes.
 export async function getUsage(tenantId: string) {
-  const [[people], [logins], [storage]] = await Promise.all([
+  const [[people], [logins], [storage], [resumes]] = await Promise.all([
     db
       .select({ n: sql<number>`count(*)::int` })
       .from(employees)
@@ -21,11 +21,15 @@ export async function getUsage(tenantId: string) {
       .select({ bytes: sql<number>`coalesce(sum(${employeeDocuments.sizeBytes}), 0)::float8` })
       .from(employeeDocuments)
       .where(and(eq(employeeDocuments.tenantId, tenantId), eq(employeeDocuments.kind, "file"))),
+    db
+      .select({ bytes: sql<number>`coalesce(sum(${candidates.resumeSize}), 0)::float8` })
+      .from(candidates)
+      .where(eq(candidates.tenantId, tenantId)),
   ]);
 
   return {
     people: Math.max(people?.n ?? 0, logins?.n ?? 0),
-    storageBytes: Number(storage?.bytes ?? 0),
+    storageBytes: Number(storage?.bytes ?? 0) + Number(resumes?.bytes ?? 0),
   };
 }
 

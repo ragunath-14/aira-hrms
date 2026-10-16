@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
+import { getActiveMembership, readActiveTenantId } from "@/lib/auth/active-tenant";
+import { customRoles } from "@/db/schema/custom-roles";
 import { memberships } from "@/db/schema/memberships";
 import { tenants } from "@/db/schema/tenants";
+import { sanitizePermissions } from "@/lib/auth/custom-roles";
 import { users } from "@/db/schema/users";
 import { auth } from "@/lib/auth/server";
 
@@ -39,15 +42,14 @@ export async function GET(request: Request) {
       );
     }
 
-    const membership = await db
-      .select({
-        membershipId: memberships.id,
-        role: memberships.role,
-        tenantId: memberships.tenantId,
-      })
-      .from(memberships)
-      .where(eq(memberships.userId, hrmsUser[0].id))
-      .limit(1);
+    // The company they are working in (one login can belong to several).
+    const active = await getActiveMembership(
+      hrmsUser[0].id,
+      readActiveTenantId(request.headers.get("cookie")),
+    );
+    const membership = active
+      ? [{ membershipId: active.membershipId, role: active.role, tenantId: active.tenantId }]
+      : [];
 
     if (membership.length === 0) {
       return Response.json(
@@ -77,10 +79,22 @@ export async function GET(request: Request) {
       );
     }
 
+    // A company role narrows what the built-in role allows; the sidebar uses
+    // this to hide what the person cannot open.
+    const [custom] = active?.membershipId
+      ? await db
+          .select({ id: customRoles.id, name: customRoles.name, permissions: customRoles.permissions })
+          .from(memberships)
+          .innerJoin(customRoles, eq(customRoles.id, memberships.customRoleId))
+          .where(eq(memberships.id, active.membershipId))
+          .limit(1)
+      : [];
+
     return Response.json({
       user: hrmsUser[0],
       tenant: tenant[0],
       membership: membership[0],
+      customRole: custom ? { id: custom.id, name: custom.name, permissions: sanitizePermissions(custom.permissions) } : null,
     });
   } catch (error) {
     console.error("Tenant context error:", error);
